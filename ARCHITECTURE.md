@@ -1,0 +1,170 @@
+# Architecture
+
+## Overview
+
+```
+Obsidian (phone/desktop)
+    ↕ Remotely Save plugin (on save / on a schedule)
+S3-compatible bucket (Cloudflare R2, AWS S3, B2, MinIO, ...)
+    ↕ S3Mirror: poll + conditional uploads (@aws-sdk/client-s3)
+Local mirror folder (VAULT_PATH, on a persistent volume)
+    ↕ LocalVault
+MCP Server (this project)
+    ↕ MCP protocol over HTTP
+AI Agents (Claude, Copilot, custom)
+```
+
+The MCP server reads notes from a local folder: either the vault itself (filesystem mode) or a mirror of the bucket Remotely Save syncs to (S3 mode). Every tool runs against that folder, so reads and content search never touch the network. Content search is a disk scan: 16 notes in flight at a time, consumed in path order, which covers a vault of ~10,000 notes in well under a second on local SSD.
+
+## Modes
+
+### Filesystem mode (`VAULT_PATH`)
+
+- Reads `.md` files directly from a vault directory
+- File watcher (debounced, 100ms per path) detects external edits. On Linux, Node's recursive watch uses one inotify watch per file; past `fs.inotify.max_user_watches` the watcher logs an error and stops instead of taking the server down
+- Startup: loads persisted index, diffs mtimes against filesystem, reads only changed files
+
+### S3 mode (`S3_BUCKET` + `VAULT_PATH`)
+
+For vaults synced by [Remotely Save](https://github.com/remotely-save/remotely-save) to an S3-compatible bucket. Remotely Save stores notes as plain files at their vault paths, so no document format or chunking is involved. Its end-to-end encryption is not supported.
+
+- `S3Vault` (`src/vault/vault-s3.ts`) wraps a `LocalVault` over `VAULT_PATH`, so reads, listing and search are the filesystem-mode code
+- `S3Mirror` (`src/vault/s3-mirror.ts`) lists the bucket on startup and every `S3_POLL_SECONDS`, downloads notes whose ETag changed, and deletes local notes removed from the bucket. Only `.md` notes that pass `validateNotePath` are mirrored (no `.obsidian/`, attachments, or Remotely Save state files)
+- A manifest (`DATA_DIR/<vault-hash>/s3-manifest.json`, path → ETag + mtime) records what the mirror owns; local files it never downloaded or uploaded are never deleted
+- Writes upload first (conditional on the last-seen ETag, or `If-None-Match: *` for new notes), then write locally. A rejected condition (412) means a device uploaded a newer version since the last poll; the tool reports it instead of overwriting. Move is `CopyObject` + `DeleteObject`
+- Timestamps use Remotely Save's S3 metadata: `MTime`/`CTime` in seconds; legacy millisecond values and objects without metadata (LastModified) are also read
+- Writes never wait for a poll. Listing and downloads run unlocked; only the local apply of a note (file + manifest entry) is serialized, and a poll leaves alone any note the server wrote after that poll's listing began, so a stale listing cannot delete, overwrite or resurrect it
+- The S3 client fails a request after 5 s without a connection or 15 s without data, so a keep-alive socket that died while the machine was suspended costs one retry instead of a hung poll or write
+- Each poll reports the notes it downloaded (content and mtime) or removed to the search index through `VaultBackend.subscribe`, so S3 mode runs no filesystem watcher and never reads a downloaded note a second time. The server's own uploads are not reported; the tool that wrote them updates the index itself
+
+## Search Index (`src/search/search.ts`)
+
+A single `SearchIndex` class manages all indexed data in memory:
+
+```
+(no full-text search — metadata only)
+knownPaths: Set<string>   ─── all indexed note paths
+mtimes: Map<path, number> ─── modification timestamps
+tags: Map<path, string[]> ─── extracted from frontmatter + inline #tags
+links: Map<path, string[]>── outgoing [[wikilinks]] and [markdown](links.md)
+backlinks: Map<target, Set<source>> ─── reverse link index (case-insensitive keys)
+```
+
+Content search (`search_notes`, `list_tasks`) scans note bodies from an in-memory content cache (`contents: Map<path, string>`, capped by `SEARCH_CONTENT_CACHE_MB`, default 32M characters). Every index update stores the note's content, so the cache is as fresh as the index; it is not persisted and refills from disk on the first scan after a restart (or for notes beyond the cap), 16 reads at a time in path order. Pages are bounded by note count (`max_notes`, default 10,000) and characters (50,000,000) with a continuation cursor. Once the index is ready it supplies the candidate paths, so `folder` and `tag` filters cost no reads; before that the folder is listed and tags are checked per note. `search_notes` runs its needle once over each note and counts line breaks only up to each match; `list_tasks` skips the Markdown parse for notes without a `[ ]`/`[x]` marker.
+
+### Persistence
+
+Everything is serialized to a single JSON file at `DATA_DIR/<vault-hash>/search-index.json`:
+
+- No full-text index (removed FlexSearch for memory efficiency); content is cached in memory but never written to disk
+- Metadata (mtimes, tags, links)
+- Encrypted with AES-256-GCM when `INDEX_PASSPHRASE` is set
+- Saved every 5 minutes + on graceful shutdown
+- Concurrent saves guarded by a lock flag
+
+### Startup flow
+
+```
+Load persisted index from disk
+  ↓
+(S3 mode) Mirror the bucket into VAULT_PATH; each note updates the index as it lands
+(local mode) Start fs.watch (debounced, reads through vault.readNote for symlink safety)
+  ↓
+Diff mtimes against the folder
+  → remove stale entries (deleted files)
+  → read only changed/new files, 16 at a time
+  ↓
+(S3 mode) Poll the bucket every S3_POLL_SECONDS; each poll feeds the index directly
+```
+
+With no persisted index (first startup or corrupted), every note is read once.
+
+### Fault tolerance
+
+- Wrong passphrase / corrupted index: `loadFromDisk` catches errors, falls back to full rebuild
+- Volume nuked: no persisted index or manifest; the mirror re-downloads every note and the index rebuilds; auth tokens lost (users re-authenticate)
+- Bucket unreachable during a poll: the poll logs a warning and the next one retries; reads keep serving the mirror
+- Crash during save: concurrent save guard prevents corruption; next restart rebuilds
+
+## Semantic search (`src/search/ai-search.ts`, optional)
+
+`semantic_search` is served by a Cloudflare AI Search instance that indexes the same R2 bucket Remotely Save syncs to. AI Search owns chunking, embeddings (bge-m3 by default), the vector and keyword indexes, and re-indexing; `AiSearchClient` only POSTs a query to the instance's `/search` endpoint, turns each returned object key into a vault path (strips `S3_PREFIX`, drops anything `isMirroredPath` rejects) and returns passages with scores. After the server writes, edits, moves or deletes a note the client asks for an indexing job, coalescing a minute of writes into one request and keeping jobs 30 s apart (AI Search's limit), so the server's own changes are searchable within minutes rather than at the next scheduled sync. Nothing about this runs on the machine: no model, no vectors, no extra memory.
+
+## Vault Backend (`src/vault/vault-backend.ts`)
+
+Interface shared by both modes:
+
+```typescript
+interface VaultBackend {
+    init(): Promise<void>;
+    close(): Promise<void>;
+    readNote(path: string): Promise<string | null>;
+    writeNote(path: string, content: string): Promise<boolean>;
+    deleteNote(path: string): Promise<boolean>;
+    moveNote(from: string, to: string): Promise<boolean>;
+    getMetadata(path: string): Promise<NoteInfo | null>;
+    listNotes(folder?: string): Promise<string[]>;
+    listNotesWithMtime(folder?: string): Promise<NoteListing[]>;
+}
+```
+
+### LocalVault (`src/vault/vault-local.ts`)
+
+- `safePath()` resolves symlinks and blocks traversal
+- `listNotesWithMtime()` uses glob + stat in parallel
+- Filters `.obsidian/` directory
+
+### S3Vault (`src/vault/vault-s3.ts`)
+
+- Delegates reads and listings to its `LocalVault`
+- Routes writes, deletes and moves through `S3Mirror` before applying them locally
+- `close()` stops the poll and waits for in-flight work
+
+## Authentication (`src/auth/auth.ts`)
+
+Self-contained OAuth 2.1 provider with PKCE:
+
+```
+Agent connects → /oauth/authorize → password page → /oauth/approve
+  → redirect with code → /oauth/token (PKCE verified) → access + refresh tokens
+```
+
+- Rate limiting with exponential backoff (capped at ~85 min)
+- CSRF tokens rotated on each failed attempt
+- Token persistence to disk (0600 permissions)
+- Periodic cleanup of expired tokens and unused clients
+- Also accepts static `Bearer <MCP_AUTH_TOKEN>` for non-OAuth clients
+
+## Tools (`src/tools/`)
+
+Registered via FastMCP:
+
+| Tool                     | Reads from                             | Writes to     |
+| ------------------------ | -------------------------------------- | ------------- |
+| `read_note`              | vault                                  | —             |
+| `read_notes`             | vault                                  | —             |
+| `search_notes`           | vault (paged scan), index (candidates) | —             |
+| `semantic_search`        | Cloudflare AI Search                   | —             |
+| `write_note`             | —                                      | vault + index |
+| `edit_note`              | vault                                  | vault + index |
+| `update_note_properties` | vault                                  | vault + index |
+| `get_note_outline`       | vault                                  | —             |
+| `list_tasks`             | vault (paged scan), index (candidates) | —             |
+| `list_notes`             | index (fallback: vault)                | —             |
+| `list_folders`           | index (fallback: vault)                | —             |
+| `list_tags`              | index                                  | —             |
+| `get_note_metadata`      | vault + index (backlinks)              | —             |
+| `move_note`              | vault                                  | vault + index |
+| `delete_note`            | —                                      | vault + index |
+
+## Build (`tsdown.config.ts`)
+
+tsdown bundles the server's TypeScript for Node 22. `deps.onlyImport` fails the
+build if the output imports anything other than a Node built-in or a declared
+runtime `dependency`.
+
+## Dependencies
+
+- **@aws-sdk/client-s3** — S3 mode bucket access
+- **FastMCP** — MCP server framework, run in stateless Streamable HTTP mode with JSON responses: each request stands alone, so hosted agents that open a new MCP session per tool call pay no session setup (FastMCP otherwise waits up to 1 s per session for client capabilities), and nothing streams, so results go out as a plain body
+- **Hono** — HTTP framework (used by FastMCP, we add OAuth routes)

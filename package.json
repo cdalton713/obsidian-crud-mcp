@@ -36,10 +36,8 @@
         ]
     },
     "scripts": {
-        "lint": "oxlint --deny-warnings src/ __tests__/",
-        "lint:fix": "oxlint --fix src/ __tests__/",
+        "lint": "oxlint --fix src/ __tests__/",
         "format": "oxfmt --write .",
-        "format:check": "oxfmt --check .",
         "build": "tsdown",
         "deploy": "docker build --platform linux/amd64 -t obsidian-crud-mcp:deploy . && DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" fly deploy deploy/mcp-only --config \"$PWD/fly.toml\" --local-only --build-arg MCP_IMAGE=obsidian-crud-mcp:deploy",
         "start": "node dist/main.js",

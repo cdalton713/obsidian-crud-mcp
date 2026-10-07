@@ -1,0 +1,142 @@
+{
+    "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+    "name": "io.github.cdalton713/obsidian-crud-mcp",
+    "description": "Give AI agents access to your Obsidian vault via local files or a Remotely Save S3 bucket.",
+    "repository": {
+        "url": "https://github.com/cdalton713/obsidian-crud-mcp.git",
+        "source": "github"
+    },
+    "version": "1.0.0",
+    "packages": [
+        {
+            "registryType": "npm",
+            "identifier": "obsidian-crud-mcp",
+            "version": "1.0.0",
+            "transport": {
+                "type": "streamable-http",
+                "url": "http://localhost:8787/mcp"
+            },
+            "environmentVariables": [
+                {
+                    "description": "Path to your Obsidian vault directory, or the local mirror folder in S3 mode",
+                    "isRequired": true,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "VAULT_PATH"
+                },
+                {
+                    "description": "S3 endpoint of the bucket Remotely Save syncs to (e.g. https://<account-id>.r2.cloudflarestorage.com). Enables S3 mode with S3_BUCKET",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "S3_ENDPOINT"
+                },
+                {
+                    "description": "Bucket name (S3 mode)",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "S3_BUCKET"
+                },
+                {
+                    "description": "S3 access key ID (S3 mode)",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": true,
+                    "name": "S3_ACCESS_KEY_ID"
+                },
+                {
+                    "description": "S3 secret access key (S3 mode)",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": true,
+                    "name": "S3_SECRET_ACCESS_KEY"
+                },
+                {
+                    "description": "S3 region (default 'auto', which Cloudflare R2 expects)",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "S3_REGION"
+                },
+                {
+                    "description": "Remote prefix, if one is set in Remotely Save",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "S3_PREFIX"
+                },
+                {
+                    "description": "How often to poll the bucket for changes, in seconds (default 30)",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "S3_POLL_SECONDS"
+                },
+                {
+                    "description": "Encrypts the persisted metadata index (paths, tags, links) at rest",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": true,
+                    "name": "INDEX_PASSPHRASE"
+                },
+                {
+                    "description": "Vault name for deep links and index storage",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "VAULT_NAME"
+                },
+                {
+                    "description": "Password for OAuth authentication",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": true,
+                    "name": "MCP_AUTH_TOKEN"
+                },
+                {
+                    "description": "Comma-separated extra Host/Origin values accepted in no-auth mode (e.g. '192.168.1.5,mybox.local'). Localhost is always allowed; ignored when MCP_AUTH_TOKEN is set.",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "MCP_ALLOWED_HOSTS"
+                },
+                {
+                    "description": "Public URL for OAuth callbacks (required when using a tunnel)",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "BASE_URL"
+                },
+                {
+                    "description": "HTTP port",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "PORT"
+                },
+                {
+                    "description": "Set to 'true' to disable all write tools (write_note, edit_note, delete_note, move_note). Useful when exposing the server to multiple AI clients.",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "READ_ONLY"
+                },
+                {
+                    "description": "Extra text appended to the MCP instructions string (the server-side system prompt). Use to bake vault-specific conventions (folder structure, naming rules, folders to avoid) so they apply across every MCP client.",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "MCP_INSTRUCTIONS"
+                },
+                {
+                    "description": "Path to a file whose contents are appended to the MCP instructions. Easier than MCP_INSTRUCTIONS for multi-line conventions. File wins if both are set.",
+                    "isRequired": false,
+                    "format": "string",
+                    "isSecret": false,
+                    "name": "MCP_INSTRUCTIONS_FILE"
+                }
+            ]
+        }
+    ]
+}
