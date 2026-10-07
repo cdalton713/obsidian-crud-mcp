@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.git/
+.github/
+*.md
+docker-compose.yml
+.env
+__tests__/
+fly.toml

@@ -1,0 +1,40 @@
+# Runs the MCP server against the S3 bucket your Remotely Save plugin syncs to.
+# Create a .env file next to this one (see .env.example):
+#   S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+#   S3_BUCKET=obsidian-vault
+#   S3_ACCESS_KEY_ID=<key-id>
+#   S3_SECRET_ACCESS_KEY=<secret>
+#   VAULT_NAME=MyVault
+#   MCP_AUTH_TOKEN=<password-for-mcp>
+
+services:
+    mcp:
+        image: ghcr.io/cdalton713/obsidian-crud-mcp:latest
+        # Builds from this checkout when the published image is unavailable.
+        build: .
+        ports:
+            - "8787:8787"
+        environment:
+            S3_ENDPOINT: ${S3_ENDPOINT:?Set S3_ENDPOINT in .env}
+            S3_REGION: ${S3_REGION:-auto}
+            S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET in .env}
+            S3_PREFIX: ${S3_PREFIX:-}
+            S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?Set S3_ACCESS_KEY_ID in .env}
+            S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?Set S3_SECRET_ACCESS_KEY in .env}
+            VAULT_NAME: ${VAULT_NAME:-MyVault}
+            MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+            BASE_URL: ${BASE_URL:-http://localhost:8787}
+            # Optional: semantic search through Cloudflare AI Search
+            CF_ACCOUNT_ID: ${CF_ACCOUNT_ID:-}
+            CF_AI_SEARCH_TOKEN: ${CF_AI_SEARCH_TOKEN:-}
+            CF_AI_SEARCH_INSTANCE: ${CF_AI_SEARCH_INSTANCE:-}
+            CF_AI_SEARCH_NAMESPACE: ${CF_AI_SEARCH_NAMESPACE:-default}
+            # The vault mirror, search index and OAuth registrations live on the volume.
+            VAULT_PATH: /data/vault
+            DATA_DIR: /data
+        restart: unless-stopped
+        volumes:
+            - mcp_data:/data
+
+volumes:
+    mcp_data:

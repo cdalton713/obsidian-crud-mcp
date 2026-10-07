@@ -1,0 +1,41 @@
+# Personal deployment config (untracked). MCP-only image built from
+# deploy/mcp-only, mirroring the Remotely Save bucket on Cloudflare R2.
+# Deploy with `pnpm run deploy`.
+#
+# Secrets (set once with `fly secrets set`, never in this file):
+#   S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, MCP_AUTH_TOKEN, BASE_URL, VAULT_NAME, CF_AI_SEARCH_TOKEN
+
+app = 'obsidian-sync-mcp-wandering-tidepool-6560'
+primary_region = 'dfw'
+
+[build]
+
+[env]
+S3_ENDPOINT = 'https://6885ef66124f6e98fe5deba01557666a.r2.cloudflarestorage.com'
+S3_BUCKET = 'obsidian-vault'
+VAULT_PATH = '/data/vault'
+DATA_DIR = '/data'
+
+[[mounts]]
+source = 'mcp_data'
+destination = '/data'
+
+[http_service]
+internal_port = 8787
+force_https = true
+# A suspended machine does not poll the bucket; it catches up on the first
+# poll after waking, so the first request after a wake can see notes up to
+# one poll interval old. Use 'off' with min_machines_running = 1 to keep it fresh.
+auto_stop_machines = 'suspend'
+auto_start_machines = true
+min_machines_running = 0
+
+[[http_service.checks]]
+interval = '30s'
+timeout = '5s'
+path = '/health'
+
+[[vm]]
+memory = '512mb'
+cpu_kind = 'shared'
+cpus = 1
