@@ -5,10 +5,10 @@
 # instead of under emulation for every target platform.
 FROM --platform=$BUILDPLATFORM node:22-slim AS build
 
-RUN corepack enable
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN npm install --global "$(node -p 'require("./package.json").packageManager')"
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
@@ -18,11 +18,11 @@ RUN pnpm run build
 
 # Production dependencies only, in a separate tree.
 WORKDIR /prod
-RUN cp /app/package.json /app/pnpm-lock.yaml ./
+RUN cp /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --prod
 
-# Runtime image without corepack's pnpm download or the pnpm store.
+# Runtime image without the pnpm installation or store.
 FROM node:22-slim
 
 ENV NODE_ENV=production

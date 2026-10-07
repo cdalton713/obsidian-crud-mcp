@@ -1,0 +1,7 @@
+proto = "0.62.0"
+node = "22.23.3"
+pnpm = "12.9.1"
+
+[settings]
+auto-install = true
+detect-strategy = "prefer-prototools"

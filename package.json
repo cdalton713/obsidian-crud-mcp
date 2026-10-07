@@ -29,12 +29,7 @@
         "README.md",
         "LICENSE"
     ],
-    "packageManager": "pnpm@10.20.0",
-    "pnpm": {
-        "onlyBuiltDependencies": [
-            "esbuild"
-        ]
-    },
+    "packageManager": "pnpm@12.9.1",
     "scripts": {
         "lint": "oxlint --fix src/ __tests__/",
         "format": "oxfmt --write .",

@@ -220,7 +220,7 @@ A suspended Fly machine does not poll the bucket. It catches up on the first pol
 
 Run the MCP server locally against your vault folder. Machine must stay on for agents to reach it.
 
-Requires Node 22.19.0 or later. Enable pnpm once with `corepack enable`.
+Requires Node 22.19.0 or later and [pnpm 12](https://pnpm.io/installation).
 
 ```bash
 VAULT_PATH=~/Documents/MyVault \
@@ -474,12 +474,17 @@ This software is provided as-is under the [MIT license](https://github.com/cdalt
 ```bash
 git clone https://github.com/cdalton713/obsidian-crud-mcp.git
 cd obsidian-crud-mcp
-corepack enable
+proto install
 pnpm install && pnpm run build
 pnpm test          # unit tests
 pnpm run test:e2e  # integration tests
 pnpm run typecheck # strict TypeScript checks
 ```
+
+Install [proto](https://moonrepo.dev/docs/proto/install) before running these commands.
+The `.prototools` file pins proto, Node, and pnpm for local development and CI.
+Keep its pnpm version and `package.json`'s `packageManager` version in sync;
+Docker reads the pnpm version from `packageManager`.
 
 S3 mode is unit-tested against an in-memory bucket (`aws-sdk-client-mock`), so the
 tests need no cloud credentials.
