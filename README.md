@@ -474,14 +474,16 @@ This software is provided as-is under the [MIT license](https://github.com/cdalt
 ```bash
 git clone https://github.com/cdalton713/obsidian-crud-mcp.git
 cd obsidian-crud-mcp
-proto install
-pnpm install && pnpm run build
+bash scripts/setup.sh
+# Open a new terminal before running the commands below.
 pnpm test          # unit tests
 pnpm run test:e2e  # integration tests
 pnpm run typecheck # strict TypeScript checks
 ```
 
-Install [proto](https://moonrepo.dev/docs/proto/install) before running these commands.
+The setup script installs [proto](https://moonrepo.dev/docs/proto/install) if needed,
+installs the pinned tools and dependencies, and builds the project. It supports
+macOS, Linux, and WSL and configures your shell so the tools work in new terminals.
 The `.prototools` file pins proto, Node, and pnpm for local development and CI.
 Keep its pnpm version and `package.json`'s `packageManager` version in sync;
 Docker reads the pnpm version from `packageManager`.
