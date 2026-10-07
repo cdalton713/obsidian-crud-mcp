@@ -1,0 +1,73 @@
+{
+    "name": "obsidian-crud-mcp",
+    "mcpName": "io.github.cdalton713/obsidian-crud-mcp",
+    "version": "1.0.0",
+    "description": "Give any AI agent access to your Obsidian vault over MCP",
+    "type": "module",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/cdalton713/obsidian-crud-mcp.git"
+    },
+    "keywords": [
+        "mcp",
+        "obsidian",
+        "remotely-save",
+        "s3",
+        "r2",
+        "claude",
+        "ai"
+    ],
+    "engines": {
+        "node": ">=22.19.0"
+    },
+    "bin": {
+        "obsidian-crud-mcp": "dist/main.js"
+    },
+    "files": [
+        "dist/",
+        "README.md",
+        "LICENSE"
+    ],
+    "packageManager": "pnpm@10.20.0",
+    "pnpm": {
+        "onlyBuiltDependencies": [
+            "esbuild"
+        ]
+    },
+    "scripts": {
+        "lint": "oxlint --deny-warnings src/ __tests__/",
+        "lint:fix": "oxlint --fix src/ __tests__/",
+        "format": "oxfmt --write .",
+        "format:check": "oxfmt --check .",
+        "build": "tsdown",
+        "deploy": "docker build --platform linux/amd64 -t obsidian-crud-mcp:deploy . && DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" fly deploy deploy/mcp-only --config \"$PWD/fly.toml\" --local-only --build-arg MCP_IMAGE=obsidian-crud-mcp:deploy",
+        "start": "node dist/main.js",
+        "dev": "tsx src/main.ts",
+        "test": "vitest run --project unit",
+        "test:watch": "vitest --project unit",
+        "test:e2e": "vitest run --project e2e",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@11ty/gray-matter": "^3.0.0",
+        "@aws-sdk/client-s3": "^3.1146.0",
+        "fastmcp": "^4.22.4",
+        "hono": "^4.13.13",
+        "mdast-util-from-markdown": "^2.1.0",
+        "pino": "^10.4.0",
+        "yaml": "^2.9.1",
+        "zod": "^4.6.5"
+    },
+    "devDependencies": {
+        "@types/mdast": "^4.0.4",
+        "@types/node": "^22.20.5",
+        "aws-sdk-client-mock": "^4.1.0",
+        "oxfmt": "^0.72.0",
+        "oxlint": "1.87.0",
+        "tsdown": "^0.23.0",
+        "tsx": "^4.23.15",
+        "typescript": "^7.0.2",
+        "vitest": "^5.0.3"
+    }
+}
