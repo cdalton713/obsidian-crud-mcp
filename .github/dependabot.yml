@@ -1,0 +1,30 @@
+# Keeps the SHA-pinned actions in .github/workflows, the Docker base images,
+# and the pnpm dependencies up to date.
+version: 2
+updates:
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: weekly
+      groups:
+          actions:
+              patterns: ["*"]
+    - package-ecosystem: npm
+      directory: /
+      schedule:
+          interval: weekly
+      groups:
+          minor-and-patch:
+              update-types: ["minor", "patch"]
+      ignore:
+          # Track the engines floor (Node 22), not the latest @types/node major.
+          - dependency-name: "@types/node"
+            update-types: ["version-update:semver-major"]
+    - package-ecosystem: docker
+      directories: ["/"]
+      schedule:
+          interval: weekly
+      # Stay on the supported Node major (22); take minor/patch bumps only.
+      ignore:
+          - dependency-name: "node"
+            update-types: ["version-update:semver-major"]
