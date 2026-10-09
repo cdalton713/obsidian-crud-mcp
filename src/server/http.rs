@@ -40,6 +40,14 @@ async fn handle_mcp(State(app): State<Arc<AppState>>, headers: HeaderMap, body: 
         }
     };
     match message {
+        Value::Array(batch) if batch.is_empty() => {
+            let error = json!({
+                "jsonrpc": "2.0",
+                "id": null,
+                "error": { "code": codes::INVALID_REQUEST, "message": "Invalid Request: empty batch" },
+            });
+            json_response(StatusCode::BAD_REQUEST, &error)
+        }
         Value::Array(batch) => {
             let mut responses = Vec::new();
             for message in batch {
