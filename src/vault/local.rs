@@ -170,10 +170,10 @@ impl VaultBackend for LocalVault {
 
     async fn write_note(&self, path: &str, content: &str) -> Result<bool, VaultError> {
         let full = self.writable_path(path).await?;
-        if let Some(parent) = full.parent() {
-            if fs::create_dir_all(parent).await.is_err() {
-                return Ok(false);
-            }
+        if let Some(parent) = full.parent()
+            && fs::create_dir_all(parent).await.is_err()
+        {
+            return Ok(false);
         }
         Ok(fs::write(&full, content).await.is_ok())
     }
@@ -204,10 +204,10 @@ impl VaultBackend for LocalVault {
         } else if Self::exists(&to_path).await? {
             return Err(VaultError::DestinationExists(to.to_owned()));
         }
-        if let Some(parent) = target.parent() {
-            if fs::create_dir_all(parent).await.is_err() {
-                return Ok(false);
-            }
+        if let Some(parent) = target.parent()
+            && fs::create_dir_all(parent).await.is_err()
+        {
+            return Ok(false);
         }
         match fs::rename(&from_path, &target).await {
             Ok(()) => Ok(true),

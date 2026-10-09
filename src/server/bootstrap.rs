@@ -63,7 +63,7 @@ async fn rescan_vault(vault: &dyn VaultBackend, index: &SearchIndex, start: Inst
                     index.update(&note.path, &content, Some(note.mtime));
                 }
                 let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
-                if total > 100 && finished % 500 == 0 {
+                if total > 100 && finished.is_multiple_of(500) {
                     info!("  indexed {finished}/{total}...");
                 }
             }
