@@ -10,7 +10,7 @@ keywords = ["mcp", "obsidian", "remotely-save", "s3", "claude"]
 categories = ["command-line-utilities", "web-programming::http-server"]
 
 [dependencies]
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 anyhow = "1"
 async-trait = "0.1"
 aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
