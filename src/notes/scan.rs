@@ -222,10 +222,12 @@ pub async fn scan_notes(
         };
         let length = content.as_deref().map(char_len);
         // Leave a note that would push this page past the cap for the next page, which always takes at least one.
-        if let Some(length) = length {
-            if scanned > 0 && length <= SCAN_NOTE_MAX_CHARS && chars + length > scan.page_chars {
-                return Ok(finish(&results, &skipped, scanned, Some((path, from_line))));
-            }
+        if let Some(length) = length
+            && scanned > 0
+            && length <= SCAN_NOTE_MAX_CHARS
+            && chars + length > scan.page_chars
+        {
+            return Ok(finish(&results, &skipped, scanned, Some((path, from_line))));
         }
         scanned += 1;
         let (Some(content), Some(length)) = (content, length) else {
@@ -277,10 +279,10 @@ async fn read_for_scan(vault: &dyn VaultBackend, index: Option<&SearchIndex>, pa
         Ok(content) => {
             let content: Option<Arc<str>> = content.map(Arc::from);
             // Only fill a gap: a change that landed meanwhile already cached newer content.
-            if let (Some(index), Some(content)) = (index, &content) {
-                if index.get_content(&path).is_none() {
-                    index.cache_content(&path, content.clone());
-                }
+            if let (Some(index), Some(content)) = (index, &content)
+                && index.get_content(&path).is_none()
+            {
+                index.cache_content(&path, content.clone());
             }
             Read::Content(content)
         }
