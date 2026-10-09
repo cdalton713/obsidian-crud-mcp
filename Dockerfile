@@ -1,6 +1,6 @@
 # MCP server image, published to ghcr.io by CI.
 
-FROM rust:1.97.0-slim-bookworm AS build
+FROM rust:1.99.0-slim-bookworm AS build
 
 # aws-lc-sys (TLS for the S3 client) builds C code with cmake.
 RUN apt-get update \
