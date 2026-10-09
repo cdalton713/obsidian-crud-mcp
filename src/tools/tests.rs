@@ -7,11 +7,14 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use parking_lot::Mutex;
+use rmcp::model::{CallToolRequestParams, ErrorCode};
+use rmcp::service::{RunningService, ServiceError};
+use rmcp::{RoleClient, RoleServer, ServiceExt};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
 use super::*;
-use crate::mcp::{McpServer, ServerInfo, codes};
+use crate::mcp::{McpServer, ServerInfo};
 use crate::search::IndexState;
 use crate::vault::{LocalVault, NoteInfo, NoteListing, VaultError};
 
@@ -77,6 +80,8 @@ struct Fixture {
     index: Arc<SearchIndex>,
     ctx: Arc<ToolContext>,
     server: McpServer,
+    client: RunningService<RoleClient, ()>,
+    _service: RunningService<RoleServer, McpServer>,
 }
 
 async fn fixture(notes: &[(&str, &str)]) -> Fixture {
@@ -105,7 +110,11 @@ async fn fixture_with(notes: &[(&str, &str)], options: Options) -> Fixture {
     };
     let info = ServerInfo { name: "test".to_owned(), version: "0".to_owned(), instructions: String::new() };
     let server = McpServer::new(info, build_tools(context()));
-    Fixture { _dir: dir, ctx: Arc::new(context()), vault, index, server }
+    let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+    let serving = tokio::spawn(server.clone().serve(server_transport));
+    let client = ().serve(client_transport).await.unwrap();
+    let service = serving.await.unwrap().unwrap();
+    Fixture { _dir: dir, ctx: Arc::new(context()), vault, index, server, client, _service: service }
 }
 
 fn write_file(root: &Path, path: &str, content: &str) {
@@ -116,13 +125,13 @@ fn write_file(root: &Path, path: &str, content: &str) {
 
 impl Fixture {
     async fn respond(&self, name: &str, args: Value) -> Value {
-        let request = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": { "name": name, "arguments": args },
-        });
-        self.server.handle(request).await.expect("a request gets a response")
+        let request = CallToolRequestParams::new(name.to_owned())
+            .with_arguments(args.as_object().expect("tool arguments are objects").clone());
+        match self.client.call_tool(request).await {
+            Ok(result) => json!({ "result": result }),
+            Err(ServiceError::McpError(error)) => json!({ "error": error }),
+            Err(error) => panic!("MCP transport failed: {error}"),
+        }
     }
 
     /// The text of a successful call.
@@ -139,7 +148,7 @@ impl Fixture {
     }
 
     async fn rejects_params(&self, name: &str, args: Value) -> bool {
-        self.respond(name, args).await["error"]["code"] == json!(codes::INVALID_PARAMS)
+        self.respond(name, args).await["error"]["code"] == json!(ErrorCode::INVALID_PARAMS)
     }
 
     /// Note content on disk, without counting as a read.
@@ -178,8 +187,8 @@ fn headings(outline: &Value) -> Vec<Value> {
 async fn only_read_note_declares_a_result_size_limit() {
     const { assert!(READ_NOTE_MAX_RESULT_SIZE_CHARS > 50_000 && READ_NOTE_MAX_RESULT_SIZE_CHARS <= 500_000) };
     let f = fixture(&[]).await;
-    let listing = f.server.handle(json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })).await.unwrap();
-    let tools = listing["result"]["tools"].as_array().unwrap();
+    let listing = serde_json::to_value(f.client.list_all_tools().await.unwrap()).unwrap();
+    let tools = listing.as_array().unwrap();
     assert!(tools.iter().any(|t| t["name"] == "read_note"), "read_note is listed");
     for tool in tools {
         if tool["name"] == "read_note" {

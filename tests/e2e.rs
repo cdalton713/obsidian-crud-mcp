@@ -129,7 +129,13 @@ impl ServerGuard {
                 logs.push('\n');
             }
         });
-        let http = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build().unwrap();
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::ACCEPT, "application/json, text/event-stream".parse().unwrap());
+        let http = reqwest::Client::builder()
+            .default_headers(headers)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
         let mut server = Self { child, port, token, logs, http, initialize_result: Value::Null };
 
         let deadline = Instant::now() + STARTUP_TIMEOUT;
@@ -211,7 +217,7 @@ impl ServerGuard {
     async fn call_tool(&self, name: &str, arguments: Value) -> String {
         let response = self.call_tool_raw(name, arguments).await;
         let result = &response["result"];
-        assert!(result["isError"].is_null(), "tool {name} failed: {response}");
+        assert_ne!(result["isError"], json!(true), "tool {name} failed: {response}");
         result["content"][0]["text"]
             .as_str()
             .unwrap_or_else(|| panic!("tool {name} returned no text: {response}"))
@@ -243,7 +249,7 @@ fn initialize_with_host(port: u16, host: &str, origin: Option<&str>) -> u16 {
     let body = initialize_request("2024-11-05").to_string();
     let origin = origin.map(|o| format!("Origin: {o}\r\n")).unwrap_or_default();
     let request = format!(
-        "POST /mcp HTTP/1.1\r\nHost: {host}\r\n{origin}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "POST /mcp HTTP/1.1\r\nHost: {host}\r\n{origin}Accept: application/json, text/event-stream\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
     let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -296,6 +302,38 @@ async fn rejects_a_non_ascii_bearer_token_with_a_normal_401() {
 }
 
 #[tokio::test]
+async fn transport_requires_mcp_headers_and_rejects_batches() {
+    let fixture = Fixture::new();
+    let server = fixture.start(&[]).await;
+    let ping = json!({ "jsonrpc": "2.0", "id": 1, "method": "ping" });
+
+    let missing_accept =
+        reqwest::Client::new().post(server.url("/mcp")).bearer_auth(AUTH).json(&ping).send().await.unwrap();
+    assert_eq!(missing_accept.status(), StatusCode::NOT_ACCEPTABLE);
+
+    let missing_content_type =
+        server.http.post(server.url("/mcp")).bearer_auth(AUTH).body(ping.to_string()).send().await.unwrap();
+    assert_eq!(missing_content_type.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+    let batch = server
+        .http
+        .post(server.url("/mcp"))
+        .bearer_auth(AUTH)
+        .header("Accept", "application/json, text/event-stream")
+        .json(&json!([ping]))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(batch.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+    let initialized = server.post_mcp(&initialize_request("2025-11-25")).await.unwrap();
+    assert_eq!(initialized.status(), StatusCode::OK);
+    assert!(initialized.headers().get("mcp-session-id").is_none(), "the server is stateless");
+    assert!(initialized.headers()["content-type"].to_str().unwrap().starts_with("application/json"));
+    assert!(!server.call_tool("read_note", json!({ "path": "Welcome.md" })).await.is_empty());
+}
+
+#[tokio::test]
 async fn health_and_transport_basics() {
     let fixture = Fixture::new();
     let server = fixture.start(&[]).await;
@@ -325,24 +363,22 @@ async fn health_and_transport_basics() {
     let notification = json!({ "jsonrpc": "2.0", "method": "notifications/initialized" });
     assert_eq!(server.post_mcp(&notification).await.unwrap().status(), StatusCode::ACCEPTED);
 
-    let garbage = server.http.post(server.url("/mcp")).bearer_auth(AUTH).body("{not json").send().await.unwrap();
-    assert_eq!(garbage.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(garbage.json::<Value>().await.unwrap()["error"]["code"], -32700);
+    let garbage = server
+        .http
+        .post(server.url("/mcp"))
+        .bearer_auth(AUTH)
+        .header("Content-Type", "application/json")
+        .body("{not json")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(garbage.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
 
     assert_eq!(server.rpc("no/such/method", json!({})).await["error"]["code"], -32601);
     assert_eq!(server.call_tool_raw("no_such_tool", json!({})).await["error"]["code"], -32601);
     let invalid = server.call_tool_raw("read_note", json!({ "path": 42 })).await;
     assert_eq!(invalid["error"]["code"], -32602, "schema violations are invalid params: {invalid}");
     assert_eq!(server.rpc("ping", json!({})).await["result"], json!({}));
-
-    let batch = json!([
-        { "jsonrpc": "2.0", "id": 1, "method": "ping" },
-        { "jsonrpc": "2.0", "method": "notifications/initialized" },
-        { "jsonrpc": "2.0", "id": 2, "method": "tools/list" },
-    ]);
-    let replies: Value = server.post_mcp(&batch).await.unwrap().json().await.unwrap();
-    let ids: Vec<_> = replies.as_array().unwrap().iter().map(|r| r["id"].clone()).collect();
-    assert_eq!(ids, vec![json!(1), json!(2)], "notifications in a batch get no reply");
 }
 
 #[tokio::test]
@@ -715,10 +751,18 @@ async fn modern_protocol_requests_get_a_proper_answer() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body: Value = response.json().await.unwrap();
-    assert_eq!(body["error"]["code"], -32601, "{body}");
+    assert_eq!(
+        body["result"]["supportedVersions"],
+        json!(["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]),
+        "{body}"
+    );
+    assert_eq!(body["result"]["capabilities"]["tools"], json!({}), "{body}");
 
     let modern = server.post_mcp(&initialize_request("2026-07-28")).await.unwrap().json::<Value>().await.unwrap();
-    assert_eq!(modern["result"]["protocolVersion"], "2025-11-25", "unknown versions get our newest: {modern}");
+    // The 2026 protocol uses discovery; initialize negotiates a legacy version.
+    assert_eq!(modern["result"]["protocolVersion"], "2025-11-25", "{modern}");
+    let unknown = server.post_mcp(&initialize_request("2099-01-01")).await.unwrap().json::<Value>().await.unwrap();
+    assert_eq!(unknown["result"]["protocolVersion"], "2025-11-25", "{unknown}");
     for version in ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"] {
         let reply = server.post_mcp(&initialize_request(version)).await.unwrap().json::<Value>().await.unwrap();
         assert_eq!(reply["result"]["protocolVersion"], version);

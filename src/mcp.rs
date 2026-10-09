@@ -1,34 +1,24 @@
-//! A minimal Model Context Protocol server: JSON-RPC over stateless
-//! Streamable HTTP with plain JSON responses, exposing tools only.
-//!
-//! Each request stands alone, so a client that opens a new MCP session per tool
-//! call (as hosted agents do) pays no session setup, and nothing streams, so a
-//! result never sits in a client's event-stream buffer until an idle timeout.
+//! Obsidian tools exposed through the rmcp server SDK.
 
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Instant;
 
 use futures::future::BoxFuture;
+use rmcp::model::{
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ErrorCode, Implementation, ListToolsResult,
+    PaginatedRequestParams, ServerCapabilities, ServerConfig,
+};
+use rmcp::service::RequestContext;
+use rmcp::{ErrorData, RoleServer, ServerHandler};
 use schemars::JsonSchema;
 use schemars::generate::SchemaSettings;
 use serde::de::DeserializeOwned;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use thiserror::Error;
 use tracing::{Level, debug, enabled, info};
 
 use crate::vault::VaultError;
-
-/// Protocol revisions this server speaks, newest first.
-pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-
-/// JSON-RPC error codes.
-pub mod codes {
-    pub const PARSE_ERROR: i64 = -32700;
-    pub const INVALID_REQUEST: i64 = -32600;
-    pub const METHOD_NOT_FOUND: i64 = -32601;
-    pub const INVALID_PARAMS: i64 = -32602;
-}
 
 /// A tool failure, reported to the client as a result with `isError: true`.
 #[derive(Debug, Error)]
@@ -124,14 +114,14 @@ impl Tool {
             .collect()
     }
 
-    fn describe(&self) -> Value {
-        let mut tool = json!({
-            "name": self.name,
-            "description": self.description,
-            "inputSchema": self.input_schema,
-        });
+    fn describe(&self) -> rmcp::model::Tool {
+        let mut tool = rmcp::model::Tool::new(
+            self.name,
+            self.description.clone(),
+            self.input_schema.as_object().expect("tool schemas are objects").clone(),
+        );
         if let Some(meta) = &self.meta {
-            tool["_meta"] = meta.clone();
+            tool.meta = Some(meta.as_object().expect("tool metadata is an object").clone().into());
         }
         tool
     }
@@ -145,89 +135,68 @@ pub struct ServerInfo {
     pub instructions: String,
 }
 
+#[derive(Clone)]
 pub struct McpServer {
     info: ServerInfo,
-    tools: Vec<Tool>,
-}
-
-fn error_response(id: Value, code: i64, message: impl Into<String>) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message.into() } })
-}
-
-fn result_response(id: Value, result: Value) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "result": result })
+    tools: Arc<Vec<Tool>>,
 }
 
 impl McpServer {
     pub fn new(info: ServerInfo, tools: Vec<Tool>) -> Self {
-        Self { info, tools }
+        Self { info, tools: Arc::new(tools) }
     }
 
     pub fn tools(&self) -> impl Iterator<Item = &Tool> {
         self.tools.iter()
     }
+}
 
-    /// Handle one JSON-RPC message. Returns the response, or `None` for a notification.
-    pub async fn handle(&self, message: Value) -> Option<Value> {
-        let Value::Object(mut message) = message else {
-            return Some(error_response(Value::Null, codes::INVALID_REQUEST, "Invalid Request"));
-        };
-        let id = message.remove("id");
-        let Some(Value::String(method)) = message.remove("method") else {
-            // A response from the client (to a request we never send) or garbage.
-            return id.map(|id| error_response(id, codes::INVALID_REQUEST, "Invalid Request"));
-        };
-        let params = match message.remove("params") {
-            Some(Value::Object(params)) => params,
-            _ => Map::new(),
-        };
-        let id = id?; // Notifications need no answer.
-        Some(match method.as_str() {
-            "initialize" => result_response(id, self.initialize(&params)),
-            "ping" | "logging/setLevel" => result_response(id, json!({})),
-            "tools/list" => {
-                let tools: Vec<Value> = self.tools.iter().map(Tool::describe).collect();
-                result_response(id, json!({ "tools": tools }))
-            }
-            "tools/call" => match self.call_tool(params).await {
-                Ok(result) => result_response(id, result),
-                Err((code, message)) => error_response(id, code, message),
-            },
-            other => error_response(id, codes::METHOD_NOT_FOUND, format!("Method not found: {other}")),
-        })
+impl ServerHandler for McpServer {
+    #[allow(deprecated)] // Keep logging/setLevel available for legacy MCP clients.
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().enable_logging().build())
+            .with_server_info(Implementation::new(&self.info.name, &self.info.version))
+            .with_instructions(&self.info.instructions)
     }
 
-    fn initialize(&self, params: &Map<String, Value>) -> Value {
-        let requested = params.get("protocolVersion").and_then(Value::as_str);
-        let version =
-            requested.filter(|v| SUPPORTED_PROTOCOL_VERSIONS.contains(v)).unwrap_or(SUPPORTED_PROTOCOL_VERSIONS[0]);
-        json!({
-            "protocolVersion": version,
-            "capabilities": { "tools": {}, "logging": {} },
-            "serverInfo": { "name": self.info.name, "version": self.info.version },
-            "instructions": self.info.instructions,
-        })
+    fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
+        self.tools.iter().find(|tool| tool.name == name).map(Tool::describe)
     }
 
-    async fn call_tool(&self, mut params: Map<String, Value>) -> Result<Value, (i64, String)> {
-        let name = match params.remove("name") {
-            Some(Value::String(name)) => name,
-            _ => return Err((codes::INVALID_PARAMS, "Missing tool name".to_owned())),
-        };
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult::with_all_items(self.tools.iter().map(Tool::describe).collect()))
+    }
+
+    #[allow(deprecated)] // Keep logging/setLevel available for legacy MCP clients.
+    async fn set_level(
+        &self,
+        _request: rmcp::model::SetLevelRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<(), ErrorData> {
+        Ok(())
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        let name = request.name;
         let tool = self
             .tools
             .iter()
             .find(|t| t.name == name)
-            .ok_or_else(|| (codes::METHOD_NOT_FOUND, format!("Unknown tool: {name}")))?;
-        let args = match params.remove("arguments") {
-            Some(Value::Null) | None => json!({}),
-            Some(args) => args,
-        };
+            .ok_or_else(|| ErrorData::new(ErrorCode::METHOD_NOT_FOUND, format!("Unknown tool: {name}"), None))?;
+        let args = Value::Object(request.arguments.unwrap_or_default());
         let errors = tool.validation_errors(&args);
         if !errors.is_empty() {
-            return Err((
-                codes::INVALID_PARAMS,
+            return Err(ErrorData::invalid_params(
                 format!("Tool '{name}' parameter validation failed: {}", errors.join("; ")),
+                None,
             ));
         }
         if enabled!(Level::DEBUG) {
@@ -237,14 +206,17 @@ impl McpServer {
         let outcome = (tool.handler)(args).await;
         info!("[tool] {name} {}ms", start.elapsed().as_millis());
         Ok(match outcome {
-            Ok(text) => json!({ "content": [{ "type": "text", "text": text }] }),
+            Ok(text) => CallToolResult::success(vec![ContentBlock::text(text)]),
             Err(ToolError::InvalidParams(message)) => {
-                return Err((codes::INVALID_PARAMS, format!("Tool '{name}' parameter validation failed: {message}")));
+                return Err(ErrorData::invalid_params(
+                    format!("Tool '{name}' parameter validation failed: {message}"),
+                    None,
+                ));
             }
-            Err(error) => json!({
-                "content": [{ "type": "text", "text": format!("Tool '{name}' execution failed: {error}") }],
-                "isError": true,
-            }),
-        })
+            Err(error) => {
+                CallToolResult::error(vec![ContentBlock::text(format!("Tool '{name}' execution failed: {error}"))])
+            }
+        }
+        .into())
     }
 }

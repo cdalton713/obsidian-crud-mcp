@@ -430,6 +430,12 @@ npx @modelcontextprotocol/inspector
 
 Set transport to **Streamable HTTP**, enter `http://localhost:8787/mcp`, and connect.
 
+The server uses the official Rust MCP SDK (`rmcp`) with stateless JSON responses.
+Custom HTTP clients must send `Content-Type: application/json` and
+`Accept: application/json, text/event-stream`. Send one JSON-RPC message per
+request; JSON-RPC batches are not supported. Invalid JSON or batches return
+HTTP 415, and a missing or incomplete `Accept` header returns HTTP 406.
+
 ---
 
 ## How to update
@@ -486,7 +492,7 @@ VAULT_PATH=~/Documents/MyVault cargo run   # run the server from source
 
 The setup script installs [rustup](https://rustup.rs/) if needed, builds the
 project, and points git at the hooks in `.githooks`. `rust-toolchain.toml`
-selects the stable toolchain with clippy and rustfmt; the Docker image pins the
+selects the stable toolchain with clippy and rustfmt (Rust 1.88 or newer is required); the Docker image pins the
 exact Rust version it builds with.
 
 S3 mode is unit-tested against an in-memory bucket (a fake `ObjectStore`), so
@@ -501,6 +507,7 @@ MIT — see [LICENSE](https://github.com/cdalton713/obsidian-crud-mcp/blob/main/
 ## Acknowledgements
 
 - [Remotely Save](https://github.com/remotely-save/remotely-save) — the Obsidian plugin that syncs the vault to S3
+- [rmcp](https://github.com/modelcontextprotocol/rust-sdk) — the official Rust MCP SDK
 - [axum](https://github.com/tokio-rs/axum) and [Tokio](https://tokio.rs/) — the HTTP server and async runtime
 - [markdown-rs](https://github.com/wooorm/markdown-rs) — CommonMark parsing for outlines, block IDs and tasks
 - [AWS SDK for Rust](https://github.com/awslabs/aws-sdk-rust) — S3 mode bucket access

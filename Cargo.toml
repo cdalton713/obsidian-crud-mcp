@@ -2,7 +2,7 @@
 name = "obsidian-crud-mcp"
 version = "1.0.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Give any AI agent access to your Obsidian vault over MCP"
 license = "MIT"
 repository = "https://github.com/cdalton713/obsidian-crud-mcp"
@@ -27,6 +27,7 @@ parking_lot = "0.12"
 percent-encoding = "2"
 rand = "0.9"
 regex = "1"
+rmcp = { version = "3.5.1", default-features = false, features = ["server", "transport-streamable-http-server"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 schemars = "1"
 scrypt = { version = "0.11", default-features = false }
@@ -45,6 +46,7 @@ uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
 
 [dev-dependencies]
+rmcp = { version = "3.5.1", default-features = false, features = ["client"] }
 tempfile = "3"
 tokio = { version = "1", features = ["test-util"] }
 tower = { version = "0.5", features = ["util"] }

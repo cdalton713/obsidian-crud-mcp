@@ -3,82 +3,25 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::body::Bytes;
-use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode, header};
-use axum::response::{IntoResponse, Response};
+use axum::extract::{Request, State};
+use axum::http::header;
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::routing::get;
-use serde_json::{Value, json};
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpServerConfig, StreamableHttpService, session::never::NeverSessionManager,
+};
 use tower_http::cors::{Any, CorsLayer};
 
 use super::Authenticator;
 use crate::auth::OAuthProvider;
-use crate::mcp::{McpServer, codes};
+use crate::mcp::McpServer;
 
-struct AppState {
-    mcp: McpServer,
-    auth: Authenticator,
-}
-
-fn json_response(status: StatusCode, body: &Value) -> Response {
-    (status, [(header::CONTENT_TYPE, "application/json")], body.to_string()).into_response()
-}
-
-async fn handle_mcp(State(app): State<Arc<AppState>>, headers: HeaderMap, body: Bytes) -> Response {
-    if let Err(refusal) = app.auth.check(&headers) {
+async fn authenticate(State(auth): State<Arc<Authenticator>>, request: Request, next: Next) -> Response {
+    if let Err(refusal) = auth.check(request.headers()) {
         return *refusal;
     }
-    let message: Value = match serde_json::from_slice(&body) {
-        Ok(message) => message,
-        Err(e) => {
-            let error = json!({
-                "jsonrpc": "2.0",
-                "id": null,
-                "error": { "code": codes::PARSE_ERROR, "message": format!("Parse error: {e}") },
-            });
-            return json_response(StatusCode::BAD_REQUEST, &error);
-        }
-    };
-    match message {
-        Value::Array(batch) if batch.is_empty() => {
-            let error = json!({
-                "jsonrpc": "2.0",
-                "id": null,
-                "error": { "code": codes::INVALID_REQUEST, "message": "Invalid Request: empty batch" },
-            });
-            json_response(StatusCode::BAD_REQUEST, &error)
-        }
-        Value::Array(batch) => {
-            let mut responses = Vec::new();
-            for message in batch {
-                responses.extend(app.mcp.handle(message).await);
-            }
-            if responses.is_empty() {
-                StatusCode::ACCEPTED.into_response()
-            } else {
-                json_response(StatusCode::OK, &Value::Array(responses))
-            }
-        }
-        message => match app.mcp.handle(message).await {
-            Some(response) => json_response(StatusCode::OK, &response),
-            None => StatusCode::ACCEPTED.into_response(),
-        },
-    }
-}
-
-/// Stateless mode keeps no sessions and opens no server-to-client stream.
-async fn method_not_allowed(State(app): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    if let Err(refusal) = app.auth.check(&headers) {
-        return *refusal;
-    }
-    let error = json!({
-        "jsonrpc": "2.0",
-        "id": null,
-        "error": { "code": -32000, "message": "Method not allowed." },
-    });
-    let mut response = json_response(StatusCode::METHOD_NOT_ALLOWED, &error);
-    response.headers_mut().insert(header::ALLOW, header::HeaderValue::from_static("POST"));
-    response
+    next.run(request).await
 }
 
 async fn health() -> &'static str {
@@ -88,11 +31,16 @@ async fn health() -> &'static str {
 /// The whole HTTP surface. Responses carry wildcard CORS so browser-based MCP
 /// clients work; the authenticator decides who gets through.
 pub fn router(mcp: McpServer, auth: Authenticator, oauth: Option<&Arc<OAuthProvider>>) -> Router {
-    let state = Arc::new(AppState { mcp, auth });
-    let mut app = Router::new()
-        .route("/mcp", get(method_not_allowed).post(handle_mcp).delete(method_not_allowed))
-        .route("/health", get(health))
-        .with_state(state);
+    let config = StreamableHttpServerConfig::default()
+        .with_legacy_session_mode(false)
+        .with_json_response(true)
+        // Authenticator owns Host/Origin checks, including authenticated remote access.
+        .with_allowed_hosts(Vec::<String>::new());
+    let service = StreamableHttpService::new(move || Ok(mcp.clone()), Arc::new(NeverSessionManager::default()), config);
+    let mcp_routes = Router::new()
+        .route_service("/mcp", service)
+        .route_layer(middleware::from_fn_with_state(Arc::new(auth), authenticate));
+    let mut app = mcp_routes.route("/health", get(health));
     if let Some(oauth) = oauth {
         app = app.merge(oauth.router());
     }
