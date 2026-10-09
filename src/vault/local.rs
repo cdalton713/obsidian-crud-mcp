@@ -19,7 +19,7 @@ pub struct LocalVault {
     write_folders: Option<Vec<String>>,
 }
 
-/// Resolve `path` against `base` without touching the disk, like Node's `path.resolve`.
+/// Resolve `path` against `base` without touching the disk.
 pub(crate) fn lexical_resolve(base: &Path, path: &str) -> PathBuf {
     let mut out = base.to_path_buf();
     for component in Path::new(path).components() {

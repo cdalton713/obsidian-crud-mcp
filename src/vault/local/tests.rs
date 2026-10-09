@@ -141,8 +141,7 @@ async fn does_not_widen_scope_when_the_write_folder_itself_is_a_symlink() {
     );
 }
 
-// The case-insensitive cases of the TypeScript suite need such a filesystem
-// to run; the folder canonicalization they rely on is checked directly here.
+// Check folder canonicalization directly without requiring a case-insensitive filesystem.
 #[tokio::test]
 async fn canonical_write_folders_use_the_on_disk_spelling() {
     let dir = tempfile::tempdir().unwrap();

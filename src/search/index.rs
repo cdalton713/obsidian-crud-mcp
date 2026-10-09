@@ -383,7 +383,7 @@ async fn write_private(path: &std::path::Path, tmp: &std::path::Path, data: &[u8
     tokio::fs::rename(tmp, path).await
 }
 
-/// Node's `scryptSync(passphrase, salt, 32)` defaults: N = 2^14, r = 8, p = 1.
+/// Derive a 32-byte key with scrypt: N = 2^14, r = 8, p = 1.
 fn derive_key(passphrase: &str, salt: &[u8]) -> Option<[u8; 32]> {
     let params = scrypt::Params::new(14, 8, 1, 32).ok()?;
     let mut key = [0u8; 32];

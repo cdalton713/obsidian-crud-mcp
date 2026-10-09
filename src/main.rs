@@ -117,6 +117,7 @@ async fn run() -> Result<(), String> {
         }
         None => None,
     };
+
     let authenticator = match (&config.auth_token, &oauth) {
         (Some(token), Some(oauth)) => Authenticator::token(token, &config.base_url, oauth.clone()),
         _ => Authenticator::local_only(config.allowed_hosts.as_deref(), &config.host),

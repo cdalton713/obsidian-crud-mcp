@@ -26,7 +26,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    /// The vault the TypeScript suite used: three notes, a tag, and a link.
+    /// A test vault with three notes, a tag, and a link.
     fn new() -> Self {
         let fixture = Self { vault: tempfile::tempdir().unwrap(), data: tempfile::tempdir().unwrap() };
         fixture.write("Welcome.md", "---\ntitle: Welcome\ntags: [intro]\n---\n# Welcome\nHello world");
@@ -281,8 +281,7 @@ async fn rejects_unauthenticated_requests_with_a_resource_metadata_challenge() {
     assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
 }
 
-// Same character count as the real header but more UTF-8 bytes; the TypeScript
-// version once threw inside the comparison and leaked the crypto error.
+// A token with the same character count but more UTF-8 bytes must return 401.
 #[tokio::test]
 async fn rejects_a_non_ascii_bearer_token_with_a_normal_401() {
     let fixture = Fixture::new();
@@ -640,7 +639,7 @@ async fn extended_tools_and_section_targets_work_over_mcp() {
     assert!(!fixture.exists(path));
 }
 
-/// The manual smoke test (`__tests__/e2e/smoke-test.md` in the TypeScript repo), automated.
+/// Automate the manual smoke test in `docs/smoke-test.md`.
 #[tokio::test]
 async fn smoke_test_script() {
     let fixture = Fixture::new();
