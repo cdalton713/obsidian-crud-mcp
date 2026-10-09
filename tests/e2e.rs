@@ -105,53 +105,72 @@ fn initialize_request(protocol_version: &str) -> Value {
 
 impl ServerGuard {
     async fn start(env: Vec<(String, String)>) -> Self {
-        let port = unused_port();
-        let token = env.iter().find(|(k, _)| k == "MCP_AUTH_TOKEN").map(|(_, v)| v.clone()).filter(|t| !t.is_empty());
-        // A clean environment keeps the developer's own MCP_*, S3_* or CF_*
-        // variables from changing what the server does.
-        let mut child = Command::new(env!("CARGO_BIN_EXE_obsidian-crud-mcp"))
-            .env_clear()
-            .envs(env)
-            .env("PORT", port.to_string())
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("spawn the server binary");
-        let logs = Arc::new(Mutex::new(String::new()));
-        let stderr = child.stderr.take().unwrap();
-        let sink = Arc::clone(&logs);
-        std::thread::spawn(move || {
-            for line in BufReader::new(stderr).lines() {
-                let Ok(line) = line else { break };
-                let mut logs = sink.lock().unwrap();
-                logs.push_str(&line);
-                logs.push('\n');
-            }
-        });
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(reqwest::header::ACCEPT, "application/json, text/event-stream".parse().unwrap());
-        let http = reqwest::Client::builder()
-            .default_headers(headers)
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .unwrap();
-        let mut server = Self { child, port, token, logs, http, initialize_result: Value::Null };
-
-        let deadline = Instant::now() + STARTUP_TIMEOUT;
-        loop {
-            if let Some(status) = server.child.try_wait().unwrap() {
-                panic!("server exited during startup ({status}):\n{}", server.logs());
-            }
-            if let Ok(response) = server.post_mcp(&initialize_request("2024-11-05")).await {
-                if response.status() == StatusCode::OK {
-                    server.initialize_result = response.json::<Value>().await.unwrap()["result"].clone();
-                    return server;
+        'attempt: for attempt in 0..5 {
+            let port = if attempt == 0 {
+                env.iter().find(|(key, _)| key == "PORT").map(|(_, value)| value.parse().unwrap()).unwrap_or_else(unused_port)
+            } else {
+                unused_port()
+            };
+            let token = env.iter().find(|(k, _)| k == "MCP_AUTH_TOKEN").map(|(_, v)| v.clone()).filter(|t| !t.is_empty());
+            // A clean environment keeps the developer's own MCP_*, S3_* or CF_*
+            // variables from changing what the server does.
+            let mut child = Command::new(env!("CARGO_BIN_EXE_obsidian-crud-mcp"))
+                .env_clear()
+                .envs(env.iter().map(|(key, value)| (key, value)))
+                .env("PORT", port.to_string())
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
+                .spawn()
+                .expect("spawn the server binary");
+            let logs = Arc::new(Mutex::new(String::new()));
+            let stderr = child.stderr.take().unwrap();
+            let sink = Arc::clone(&logs);
+            let log_reader = std::thread::spawn(move || {
+                for line in BufReader::new(stderr).lines() {
+                    let Ok(line) = line else { break };
+                    let mut logs = sink.lock().unwrap();
+                    logs.push_str(&line);
+                    logs.push('\n');
                 }
+            });
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(reqwest::header::ACCEPT, "application/json, text/event-stream".parse().unwrap());
+            let http = reqwest::Client::builder()
+                .default_headers(headers)
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap();
+            let mut server = Self { child, port, token, logs, http, initialize_result: Value::Null };
+
+            let deadline = Instant::now() + STARTUP_TIMEOUT;
+            loop {
+                if let Some(status) = server.child.try_wait().unwrap() {
+                    log_reader.join().expect("read server startup logs");
+                    let logs = server.logs();
+                    // The selected port can be taken after unused_port releases it.
+                    if attempt < 4 && logs.contains("Failed to listen on") && logs.contains("Address already in use") {
+                        continue 'attempt;
+                    }
+                    panic!("server exited during startup ({status}):\n{logs}");
+                }
+                // Do not initialize another server that won the race for this port.
+                if !server.logs().contains(&format!("listening on port {port}")) {
+                    assert!(Instant::now() < deadline, "server did not start in time:\n{}", server.logs());
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+                if let Ok(response) = server.post_mcp(&initialize_request("2024-11-05")).await {
+                    if response.status() == StatusCode::OK {
+                        server.initialize_result = response.json::<Value>().await.unwrap()["result"].clone();
+                        return server;
+                    }
+                }
+                assert!(Instant::now() < deadline, "server did not start in time:\n{}", server.logs());
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
-            assert!(Instant::now() < deadline, "server did not start in time:\n{}", server.logs());
-            tokio::time::sleep(Duration::from_millis(100)).await;
         }
+        unreachable!("the last startup attempt returns or fails");
     }
 
     fn url(&self, path: &str) -> String {
@@ -569,6 +588,19 @@ async fn lists_folders_tags_and_link_metadata() {
 
     let project = server.call_tool("get_note_metadata", json!({ "path": "projects/test.md" })).await;
     assert!(project.contains("Outgoing links") && project.contains("Welcome"), "{project}");
+}
+
+#[tokio::test]
+async fn server_start_retries_an_occupied_port() {
+    let occupied = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = occupied.local_addr().unwrap().port();
+    let fixture = Fixture::new();
+    let server = fixture.start(&[("PORT", &port.to_string())]).await;
+
+    assert_ne!(server.port, port);
+    let moved = server.call_tool("move_note", json!({ "from": "Welcome.md", "to": "archive/Welcome.md" })).await;
+    assert!(moved.contains("Moved"), "{moved}");
+    assert!(fixture.exists("archive/Welcome.md"));
 }
 
 #[tokio::test]
