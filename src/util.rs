@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 
-/// Characters `encodeURIComponent` leaves alone: `A-Z a-z 0-9 - _ . ! ~ * ' ( )`.
+/// Characters left unescaped in URI components: `A-Z a-z 0-9 - _ . ! ~ * ' ( )`.
 const URI_COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
     .remove(b'_')
@@ -17,12 +17,12 @@ const URI_COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'(')
     .remove(b')');
 
-/// Percent-encode like JavaScript's `encodeURIComponent`.
+/// Percent-encode a URI component.
 pub fn encode_uri_component(value: &str) -> String {
     utf8_percent_encode(value, URI_COMPONENT).to_string()
 }
 
-/// Milliseconds since the Unix epoch, as a float like JavaScript's `mtimeMs`.
+/// Milliseconds since the Unix epoch, as a floating-point number.
 pub fn system_time_ms(time: SystemTime) -> f64 {
     match time.duration_since(UNIX_EPOCH) {
         Ok(d) => d.as_secs() as f64 * 1e3 + f64::from(d.subsec_nanos()) / 1e6,
@@ -36,7 +36,7 @@ pub fn now_ms() -> i64 {
 }
 
 /// Human-friendly ordering for paths: case-insensitive first, lowercase before
-/// uppercase on ties, close to `String.prototype.localeCompare`.
+/// uppercase on ties.
 pub fn locale_cmp(a: &str, b: &str) -> Ordering {
     let folded = a.chars().flat_map(char::to_lowercase).cmp(b.chars().flat_map(char::to_lowercase));
     folded.then_with(|| b.cmp(a))
@@ -60,7 +60,7 @@ pub fn take_chars(text: &str, n: usize) -> &str {
     }
 }
 
-/// Format a millisecond timestamp like `Date.prototype.toISOString`.
+/// Format a millisecond timestamp as an ISO 8601 UTC string.
 pub fn iso_timestamp(ms: f64) -> String {
     chrono::DateTime::from_timestamp_millis(ms as i64)
         .map(|t| t.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())

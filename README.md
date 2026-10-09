@@ -490,6 +490,12 @@ cargo fmt                        # formatting
 VAULT_PATH=~/Documents/MyVault cargo run   # run the server from source
 ```
 
+For named tasks, install `just` once with `brew install just` on macOS, or
+`cargo install --locked just`. Run `just` to list commands, or run `just e2e`,
+`just unit`, `just test`, `just lint`, or `just format`. The tasks are defined in
+`justfile`. RustRover's run configuration selector includes matching Shell Script
+configurations from `.run/`; select one and click Run.
+
 The setup script installs [rustup](https://rustup.rs/) if needed, builds the
 project, and points git at the hooks in `.githooks`. `rust-toolchain.toml`
 selects the stable toolchain with clippy and rustfmt (Rust 1.88 or newer is required); the Docker image pins the

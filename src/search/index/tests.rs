@@ -304,10 +304,9 @@ fn encryption_round_trips_and_detects_tampering() {
     assert_eq!(decrypt("", "pass"), None);
 }
 
-/// Known answers from Node (`scryptSync("pass", salt, 32)` and `aes-256-gcm`),
-/// so files written by the TypeScript server still decrypt.
+/// Fixed test vectors for scrypt key derivation and AES-256-GCM decryption.
 #[test]
-fn decrypts_what_node_encrypted() {
+fn decrypts_known_ciphertext() {
     let salt = [7u8; 16];
     assert_eq!(
         hex::encode(derive_key("pass", &salt).unwrap()),

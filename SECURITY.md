@@ -26,7 +26,7 @@ The server implements a self-contained OAuth 2.1 authorization server with PKCE.
 
 ### Token security
 
-- **Timing-safe comparison** — both password and CSRF token comparisons use `crypto.timingSafeEqual` to prevent timing side-channel attacks.
+- **Timing-safe comparison** — both password and CSRF token comparisons use the Rust `safe_equal` helper to prevent timing side-channel attacks.
 - **CSRF protection** — the OAuth approval form includes a per-request CSRF token. Submissions without a valid token are rejected.
 - **Redirect URI validation** — the `/oauth/authorize` endpoint validates that the `redirect_uri` matches what the client registered, preventing authorization code theft via open redirect.
 - **Token persistence** — OAuth clients and tokens are persisted to disk whenever they change (registration, code exchange, refresh), on clean shutdown and every 5 minutes, and loaded on restart, so sessions survive server restarts and deploys. Files are stored in `DATA_DIR/<vault-hash>/` with `0600` permissions (owner-only). Defaults to `~/.obsidian-mcp/` locally, or the persistent volume on Fly.io. Each vault gets an isolated subdirectory.
@@ -52,7 +52,7 @@ The server implements a self-contained OAuth 2.1 authorization server with PKCE.
 ## Filesystem (local mode and the S3 mirror)
 
 - **Path traversal prevention** — all file operations resolve the full path and verify it stays within the vault root directory. Attempts to access `../` or absolute paths outside the vault throw an error before any I/O occurs.
-- **Symlink resolution** — `fs.realpath()` resolves symlinks before the path check. A symlink inside the vault pointing to `/etc/passwd` is caught because the resolved path falls outside the vault root.
+- **Symlink resolution** — `tokio::fs::canonicalize` resolves symlinks before the path check. A symlink inside the vault pointing to `/etc/passwd` is caught because the resolved path falls outside the vault root.
 
 ---
 

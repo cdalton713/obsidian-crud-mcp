@@ -1,14 +1,12 @@
 # Changelog
 
-## Unreleased
-
 ### Changed
 
-- **Rewritten in Rust.** The server is now a single native binary (`obsidian-crud-mcp`) built with Cargo; Node.js and pnpm are no longer needed. Tools, parameters, environment variables, the HTTP endpoints and the on-disk OAuth and S3 manifest files are unchanged.
-- The persisted search index uses schema version 4, so the first start after upgrading rebuilds it once from the vault.
+- The server runs as a single native Rust binary (`obsidian-crud-mcp`) built with Cargo.
+- The persisted search index uses schema version 4. The server rebuilds an incompatible index from the vault.
 - `update_note_properties` now keeps untouched frontmatter lines byte-for-byte, comments and spacing included.
 - `list_notes` reads `modified_after` date-times without an offset as UTC.
-- Releases ship a Linux binary archive instead of an npm tarball; the MCP registry entry points at the Docker image.
+- Releases include a Linux binary archive; the MCP registry entry points at the Docker image.
 
 ## 1.0.0
 

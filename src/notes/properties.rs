@@ -109,7 +109,7 @@ fn yaml_to_json(value: serde_norway::Value) -> Value {
     }
 }
 
-/// Mapping keys are always strings, as in JavaScript objects.
+/// Mapping keys are always strings.
 fn key_string(key: serde_norway::Value) -> String {
     match yaml_to_json(key) {
         Value::String(s) => s,
@@ -118,7 +118,7 @@ fn key_string(key: serde_norway::Value) -> String {
     }
 }
 
-/// Deep equality where `1` and `1.0` are the same number, as in JavaScript.
+/// Deep equality where `1` and `1.0` are the same number.
 pub(crate) fn json_eq(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Number(x), Value::Number(y)) => match (x.as_i64(), y.as_i64()) {

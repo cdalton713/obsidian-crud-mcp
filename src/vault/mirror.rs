@@ -207,6 +207,7 @@ impl ObjectStore for AwsStore {
             .set_prefix((!prefix.is_empty()).then(|| prefix.to_owned()))
             .into_paginator()
             .send();
+
         while let Some(page) = pages.next().await {
             let page = page.map_err(request_error)?;
             for object in page.contents() {
@@ -299,7 +300,7 @@ pub fn parse_remote_mtime(metadata: &HashMap<String, String>) -> Option<f64> {
     Some(if value >= 1e12 { value } else { value * 1000.0 })
 }
 
-/// Like JavaScript's `parseFloat`: the longest numeric prefix, after leading whitespace.
+/// Parse the longest numeric prefix after leading whitespace.
 fn parse_float_prefix(raw: &str) -> Option<f64> {
     let text = raw.trim_start();
     (1..=text.len())
