@@ -414,17 +414,17 @@ impl OAuthProvider {
         let now = now_ms();
         let mut state = self.state.lock();
         for (key, value) in data.tokens {
-            if let Ok(record) = serde_json::from_value::<TokenRecord>(value) {
-                if record.expires_at > now {
-                    state.tokens.insert(key, record);
-                }
+            if let Ok(record) = serde_json::from_value::<TokenRecord>(value)
+                && record.expires_at > now
+            {
+                state.tokens.insert(key, record);
             }
         }
         for (key, value) in data.refresh_tokens {
-            if let Ok(record) = serde_json::from_value::<TokenRecord>(value) {
-                if record.refresh_expires_at > now {
-                    state.refresh_tokens.insert(key, record);
-                }
+            if let Ok(record) = serde_json::from_value::<TokenRecord>(value)
+                && record.refresh_expires_at > now
+            {
+                state.refresh_tokens.insert(key, record);
             }
         }
         for (key, value) in data.clients {
