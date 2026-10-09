@@ -107,11 +107,15 @@ impl ServerGuard {
     async fn start(env: Vec<(String, String)>) -> Self {
         'attempt: for attempt in 0..5 {
             let port = if attempt == 0 {
-                env.iter().find(|(key, _)| key == "PORT").map(|(_, value)| value.parse().unwrap()).unwrap_or_else(unused_port)
+                env.iter()
+                    .find(|(key, _)| key == "PORT")
+                    .map(|(_, value)| value.parse().unwrap())
+                    .unwrap_or_else(unused_port)
             } else {
                 unused_port()
             };
-            let token = env.iter().find(|(k, _)| k == "MCP_AUTH_TOKEN").map(|(_, v)| v.clone()).filter(|t| !t.is_empty());
+            let token =
+                env.iter().find(|(k, _)| k == "MCP_AUTH_TOKEN").map(|(_, v)| v.clone()).filter(|t| !t.is_empty());
             // A clean environment keeps the developer's own MCP_*, S3_* or CF_*
             // variables from changing what the server does.
             let mut child = Command::new(env!("CARGO_BIN_EXE_obsidian-crud-mcp"))
@@ -160,11 +164,11 @@ impl ServerGuard {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     continue;
                 }
-                if let Ok(response) = server.post_mcp(&initialize_request("2024-11-05")).await {
-                    if response.status() == StatusCode::OK {
-                        server.initialize_result = response.json::<Value>().await.unwrap()["result"].clone();
-                        return server;
-                    }
+                if let Ok(response) = server.post_mcp(&initialize_request("2024-11-05")).await
+                    && response.status() == StatusCode::OK
+                {
+                    server.initialize_result = response.json::<Value>().await.unwrap()["result"].clone();
+                    return server;
                 }
                 assert!(Instant::now() < deadline, "server did not start in time:\n{}", server.logs());
                 tokio::time::sleep(Duration::from_millis(100)).await;

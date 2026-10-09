@@ -238,20 +238,19 @@ pub fn starts_with_setext_boundary(content: &str) -> bool {
 /// Checkbox tasks (`- [ ] text`, `- [x] text`) anywhere in the note, outside frontmatter and code.
 pub fn note_tasks(content: &str) -> Vec<NoteTask> {
     fn visit(content: &str, node: &Node, tasks: &mut Vec<NoteTask>) {
-        if let Node::ListItem(item) = node {
-            if let Some(first @ Node::Paragraph(_)) = item.children.first() {
-                if let Some((range, line, _)) = span(content, first) {
-                    let source = &content[range];
-                    if let Some(checkbox) = CHECKBOX.captures(source) {
-                        let text = &source[checkbox.get(0).map_or(0, |m| m.end())..];
-                        tasks.push(NoteTask {
-                            line,
-                            text: take_chars(text, TASK_TEXT_MAX_CHARS).to_owned(),
-                            completed: matches!(&checkbox[1], "x" | "X"),
-                            truncated: char_len(text) > TASK_TEXT_MAX_CHARS,
-                        });
-                    }
-                }
+        if let Node::ListItem(item) = node
+            && let Some(first @ Node::Paragraph(_)) = item.children.first()
+            && let Some((range, line, _)) = span(content, first)
+        {
+            let source = &content[range];
+            if let Some(checkbox) = CHECKBOX.captures(source) {
+                let text = &source[checkbox.get(0).map_or(0, |m| m.end())..];
+                tasks.push(NoteTask {
+                    line,
+                    text: take_chars(text, TASK_TEXT_MAX_CHARS).to_owned(),
+                    completed: matches!(&checkbox[1], "x" | "X"),
+                    truncated: char_len(text) > TASK_TEXT_MAX_CHARS,
+                });
             }
         }
         for child in children(node) {
