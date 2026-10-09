@@ -162,7 +162,8 @@ pub async fn scan_notes(
     scan: ScanOptions<'_>,
 ) -> Result<String, VaultError> {
     let folder = options.folder.as_deref().map(trim_slashes).filter(|f| !f.is_empty());
-    let tag = options.tag.as_deref().map(|t| t.strip_prefix('#').unwrap_or(t));
+    // A bare "#" names no tag; filtering on "" would hide every note.
+    let tag = options.tag.as_deref().map(|t| t.strip_prefix('#').unwrap_or(t)).filter(|t| !t.is_empty());
     let key = hex::encode(Sha256::digest(json!([filter_key, folder.unwrap_or(""), tag.unwrap_or("")]).to_string()));
     let cursor = match options.cursor.as_deref() {
         None => None,
@@ -292,4 +293,119 @@ fn decode_cursor(raw: &str, key: &str) -> Option<Cursor> {
     let cursor: Cursor = serde_json::from_slice(&bytes).ok()?;
     let valid = cursor.key == key && is_valid_note_path(&cursor.path) && (1..=1_000_001).contains(&cursor.line);
     valid.then_some(cursor)
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::Value;
+
+    use super::*;
+    use crate::vault::LocalVault;
+
+    async fn vault(notes: &[(&str, &str)]) -> (tempfile::TempDir, LocalVault) {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = LocalVault::new(dir.path(), None).unwrap();
+        for (path, content) in notes {
+            assert!(vault.write_note(path, content).await.unwrap(), "write {path}");
+        }
+        (dir, vault)
+    }
+
+    fn params(cursor: Option<&Value>) -> ScanParameters {
+        ScanParameters {
+            limit: 20,
+            max_notes: 100,
+            cursor: cursor.and_then(Value::as_str).map(str::to_owned),
+            ..ScanParameters::default()
+        }
+    }
+
+    async fn scan(
+        vault: &LocalVault,
+        params: &ScanParameters,
+        page_chars: usize,
+        find: impl Fn(&str) -> Vec<LineMatch>,
+    ) -> Value {
+        let options = ScanOptions { page_chars, ..ScanOptions::default() };
+        let page = scan_notes(vault, "V", params, "test", find, options).await.unwrap();
+        serde_json::from_str(&page).unwrap()
+    }
+
+    fn first_line(content: &str) -> Vec<LineMatch> {
+        let text = content.chars().next().map(String::from).unwrap_or_default();
+        vec![LineMatch { line: 1, text, completed: None, truncated: None }]
+    }
+
+    #[tokio::test]
+    async fn pages_stop_before_a_note_would_exceed_the_character_cap() {
+        let notes = ["a", "b", "c"].map(|c| (format!("{c}.md"), c.repeat(900_000)));
+        let refs: Vec<(&str, &str)> = notes.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+        let (_dir, vault) = vault(&refs).await;
+        let first = scan(&vault, &params(None), 2_000_000, |_| Vec::new()).await;
+        assert_eq!(first["scanned_notes"], 2);
+        assert!(first["next_cursor"].is_string());
+        let second = scan(&vault, &params(Some(&first["next_cursor"])), 2_000_000, first_line).await;
+        assert_eq!(second["scanned_notes"], 1);
+        assert_eq!(second["results"][0]["path"], "c.md");
+        assert_eq!(second["next_cursor"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn pages_always_process_at_least_one_note() {
+        let notes = ["a", "b", "c"].map(|c| (format!("{c}.md"), c.repeat(1_000_000)));
+        let refs: Vec<(&str, &str)> = notes.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+        let (_dir, vault) = vault(&refs).await;
+        let first = scan(&vault, &params(None), 2_000_000, |_| Vec::new()).await;
+        assert_eq!(first["scanned_notes"], 2);
+        let second = scan(&vault, &params(Some(&first["next_cursor"])), 2_000_000, |_| Vec::new()).await;
+        assert_eq!(second["scanned_notes"], 1);
+        assert_eq!(second["next_cursor"], Value::Null);
+        // A single note larger than the page still gets scanned on its own page.
+        let tiny = scan(&vault, &params(None), 10, |_| Vec::new()).await;
+        assert_eq!(tiny["scanned_notes"], 1);
+    }
+
+    #[tokio::test]
+    async fn page_cap_counts_characters_not_bytes() {
+        let wide = "é".repeat(600_000);
+        let (_dir, vault) = vault(&[("a.md", &wide), ("b.md", &wide)]).await;
+        let page = scan(&vault, &params(None), 1_300_000, |_| Vec::new()).await;
+        assert_eq!(page["scanned_notes"], 2, "{page}");
+        assert_eq!(page["next_cursor"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn bad_or_mismatched_cursors_are_reported() {
+        let (_dir, vault) = vault(&[("a.md", "x"), ("b.md", "y")]).await;
+        let one = ScanParameters { limit: 1, ..params(None) };
+        let page = scan(&vault, &one, SCAN_PAGE_CHARS, first_line).await;
+        let cursor = page["next_cursor"].as_str().unwrap().to_owned();
+
+        // Clients may hand back a padded cursor.
+        let padded = format!("{cursor}{}", "=".repeat((4 - cursor.len() % 4) % 4));
+        let resumed = ScanParameters { cursor: Some(padded), ..one.clone() };
+        assert_eq!(scan(&vault, &resumed, SCAN_PAGE_CHARS, first_line).await["results"][0]["path"], "b.md");
+
+        let forged = URL_SAFE_NO_PAD.encode(br#"{"key":"x","path":"b.md","line":1}"#);
+        for cursor in ["not base64!", "e30", forged.as_str()] {
+            let bad = ScanParameters { cursor: Some(cursor.to_owned()), ..one.clone() };
+            let page = scan(&vault, &bad, SCAN_PAGE_CHARS, first_line).await;
+            assert_eq!(page["error"], "Invalid cursor or changed filters. Start again without cursor.", "{cursor}");
+        }
+        let other_folder = ScanParameters { folder: Some("elsewhere".into()), cursor: Some(cursor), ..one };
+        assert!(scan(&vault, &other_folder, SCAN_PAGE_CHARS, first_line).await["error"].is_string());
+    }
+
+    #[tokio::test]
+    async fn folder_slashes_and_a_bare_hash_tag_do_not_filter_everything_out() {
+        let (_dir, vault) = vault(&[("work/a.md", "x"), ("workshop/b.md", "y"), ("c.md", "z")]).await;
+        let folder = ScanParameters { folder: Some("/work/".into()), ..params(None) };
+        let page = scan(&vault, &folder, SCAN_PAGE_CHARS, first_line).await;
+        assert_eq!(page["results"].as_array().unwrap().len(), 1, "{page}");
+        assert_eq!(page["results"][0]["path"], "work/a.md");
+
+        let hash = ScanParameters { tag: Some("#".into()), ..params(None) };
+        let page = scan(&vault, &hash, SCAN_PAGE_CHARS, first_line).await;
+        assert_eq!(page["results"].as_array().unwrap().len(), 3, "{page}");
+    }
 }

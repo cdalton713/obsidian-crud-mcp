@@ -275,7 +275,12 @@ async fn list_notes(ctx: Arc<ToolContext>, args: ListNotesParams) -> Result<Stri
         ListingPage { shown: shown.len(), matched: notes.len(), sort_by: sort_by.as_str(), limit, omitted: &omitted };
     let mut lines = vec![describe_listing(&scope, &page)];
     lines.extend(shown.iter().map(|n| {
-        let date = if n.mtime != 0.0 { iso_timestamp(n.mtime)[..16].to_owned() } else { String::new() };
+        // An mtime outside chrono's range formats as "Invalid Date", too short to slice.
+        let date = if n.mtime != 0.0 {
+            iso_timestamp(n.mtime).get(..16).unwrap_or_default().to_owned()
+        } else {
+            String::new()
+        };
         format!("- {date} [{}]({})", n.path, make_deep_link(&ctx.vault_name, &n.path))
     }));
     Ok(lines.join("\n"))

@@ -235,4 +235,155 @@ mod tests {
         assert_eq!(masked.lines().count(), content.lines().count());
         assert_eq!(masked, "a ... c\n...\n.\n...\nd");
     }
+
+    #[test]
+    fn reads_scalar_properties() {
+        let meta =
+            parse_frontmatter_and_links("---\ntitle: My Note\ndate: 2026-03-24\nstatus: draft\n---\n\n# Content");
+        assert_eq!(meta.frontmatter.get("title"), Some(&Value::from("My Note")));
+        // Dates stay strings, as they do in Obsidian's property view.
+        assert_eq!(meta.frontmatter.get("date"), Some(&Value::from("2026-03-24")));
+        assert_eq!(meta.frontmatter.get("status"), Some(&Value::from("draft")));
+    }
+
+    #[test]
+    fn reads_block_list_tags() {
+        assert_eq!(
+            tags("---\ntags:\n  - project\n  - active\n  - important\n---\n\nContent"),
+            ["project", "active", "important"]
+        );
+    }
+
+    #[test]
+    fn reads_non_ascii_property_keys() {
+        let meta = parse_frontmatter_and_links("---\nämne: unicode\nsenast_ändrad: 2026-09-16\ntitle: plain\n---\n");
+        assert_eq!(meta.frontmatter.get("ämne"), Some(&Value::from("unicode")));
+        assert_eq!(meta.frontmatter.get("senast_ändrad"), Some(&Value::from("2026-09-16")));
+        assert_eq!(meta.frontmatter.get("title"), Some(&Value::from("plain")));
+    }
+
+    #[test]
+    fn non_ascii_inline_tags_are_whole() {
+        assert_eq!(
+            tags("Se #lägen och #art/rutin-för-personal här, samt #日本語"),
+            ["lägen", "art/rutin-för-personal", "日本語"]
+        );
+    }
+
+    #[test]
+    fn combining_marks_stay_inside_keys_and_tags() {
+        let key = "a\u{0308}mne";
+        let tag = "la\u{0308}gen";
+        let meta = parse_frontmatter_and_links(&format!("---\n{key}: nfd\n---\n\nText #{tag} here"));
+        assert_eq!(meta.frontmatter.get(key), Some(&Value::from("nfd")));
+        assert_eq!(meta.tags, [tag]);
+    }
+
+    #[test]
+    fn ignores_tags_in_double_backtick_spans() {
+        assert_eq!(tags("Set the `#Kategori` field and ``#Household`` too, but keep #real here"), ["real"]);
+    }
+
+    #[test]
+    fn ignores_tags_in_fences_with_info_strings() {
+        let content = "#before\n```\n#Household\n#inside/nested\n```\n#after\n~~~md\n#tilde\n~~~\n";
+        assert_eq!(tags(content), ["before", "after"]);
+    }
+
+    #[test]
+    fn unclosed_fence_runs_to_the_end() {
+        assert_eq!(tags("#kept\n```\n#lost\n#also-lost"), ["kept"]);
+    }
+
+    #[test]
+    fn unmatched_backtick_run_is_literal() {
+        assert_eq!(tags("A stray ` here and #tag stays; a ``span with #hidden`` hides it"), ["tag"]);
+    }
+
+    #[test]
+    fn stray_backticks_do_not_pair_across_blank_lines() {
+        let mut parts = vec!["The user`s request needs follow up. #important".to_owned()];
+        parts.extend((0..20).map(|i| format!("## Section {i}\nSome notes here. #tag{i}")));
+        parts.push("Circling back, thats it`s done. #wrapup".to_owned());
+        let found = tags(&parts.join("\n\n"));
+        assert_eq!(found.len(), 22, "{found:?}");
+        for tag in ["important", "tag0", "tag19", "wrapup"] {
+            assert!(found.iter().any(|t| t == tag), "missing {tag} in {found:?}");
+        }
+    }
+
+    #[test]
+    fn masks_many_unmatched_backtick_runs_in_linear_time() {
+        let mut content = String::new();
+        let mut n = 1;
+        while content.len() < 2_000_000 {
+            content.push_str(&"`".repeat(n));
+            content.push_str(" x ");
+            n += 1;
+        }
+        content.push_str("#end");
+        let start = std::time::Instant::now();
+        assert_eq!(tags(&content), ["end"]);
+        // Generous for debug builds; a quadratic scan takes minutes here.
+        assert!(start.elapsed() < std::time::Duration::from_secs(10), "took {:?}", start.elapsed());
+    }
+
+    #[test]
+    fn masking_does_not_create_or_extend_tags() {
+        assert_eq!(tags("`x`#glued and #tag`y` and `#a`#b"), ["tag"]);
+    }
+
+    #[test]
+    fn all_digit_inline_tags_are_rejected() {
+        let found = tags("See PR #1984 and issue #20; #y1984 and #2026/09 and #x-1 are tags");
+        assert_eq!(found, ["y1984", "2026/09", "x-1"]);
+    }
+
+    #[test]
+    fn non_decimal_number_tags_are_kept() {
+        assert_eq!(tags("Chapter #Ⅳ and footnote #² are tags, #42 is not"), ["Ⅳ", "²"]);
+    }
+
+    #[test]
+    fn property_and_inline_tags_are_deduplicated() {
+        assert_eq!(tags("---\ntags: [shared]\n---\n\nAlso #shared inline"), ["shared"]);
+    }
+
+    #[test]
+    fn markdown_links_must_target_notes() {
+        assert_eq!(links("See [link](https://example.com) and [img](photo.png)"), Vec::<String>::new());
+        assert_eq!(
+            links("See [my link](other-note.md) and [another](folder/note.md)"),
+            ["other-note.md", "folder/note.md"]
+        );
+    }
+
+    #[test]
+    fn links_in_code_are_ignored_but_property_links_count() {
+        let content = [
+            "---",
+            "related: \"[[From Property]]\"",
+            "---",
+            "See [[Real]] and [doc](real.md).",
+            "Inline `[[Not Inline]]` and `[x](not-inline.md)`.",
+            "```",
+            "[[Not Fenced]]",
+            "[y](not-fenced.md)",
+            "```",
+        ]
+        .join("\n");
+        let mut found = links(&content);
+        found.sort();
+        assert_eq!(found, ["From Property", "Real", "real.md"]);
+    }
+
+    #[test]
+    fn plain_text_has_no_metadata() {
+        assert_eq!(parse_frontmatter_and_links("Just plain text, no metadata."), NoteMetadata::default());
+    }
+
+    #[test]
+    fn unclosed_frontmatter_is_not_frontmatter() {
+        assert!(parse_frontmatter_and_links("---\ntitle: Broken\nNo closing delimiter").frontmatter.is_empty());
+    }
 }

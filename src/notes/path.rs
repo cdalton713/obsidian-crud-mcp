@@ -92,4 +92,67 @@ mod tests {
         }
         assert!(!is_valid_note_path(&format!("{}.md", "a".repeat(1000))));
     }
+
+    #[test]
+    fn accepts_non_ascii_paths() {
+        assert_eq!(validate_note_path("Проект/заметка.md"), Ok(()));
+        assert_eq!(validate_note_path("a/b/c/deep note.md"), Ok(()));
+    }
+
+    #[test]
+    fn rejects_attachments_config_and_code() {
+        for path in
+            ["_remotely-save-metadata-on-remote.json", "note.txt", "drawing.canvas", "image.png", "folder/data.json"]
+        {
+            assert_eq!(validate_note_path(path), Err(InvalidNotePath::NotMarkdown), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_colons_anywhere() {
+        for path in ["a:b.md", "folder/12:30 meeting.md"] {
+            assert_eq!(validate_note_path(path), Err(InvalidNotePath::Colon), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_hidden_paths_and_dot_folders() {
+        for path in [
+            ".obsidian/plugins/evil/main.js",
+            ".obsidian/plugins/remotely-save/data.json",
+            ".obsidian/config.md",
+            "notes/.secret.md",
+            ".trash/old.md",
+            "folder/.md",
+            "sub\\.obsidian\\evil.md",
+        ] {
+            assert!(!is_valid_note_path(path), "{path:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn rejects_traversal_and_absolute_paths() {
+        for path in ["a/../../etc/passwd.md", "/abs/note.md", "a\0b.md"] {
+            assert_eq!(validate_note_path(path), Err(InvalidNotePath::Malformed), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn length_limit_is_one_thousand() {
+        assert!(is_valid_note_path(&format!("{}.md", "a".repeat(997))));
+        assert_eq!(validate_note_path(&format!("{}.md", "a".repeat(1001))), Err(InvalidNotePath::Malformed));
+    }
+
+    #[test]
+    fn every_error_message_names_the_problem() {
+        for error in [
+            InvalidNotePath::Malformed,
+            InvalidNotePath::Colon,
+            InvalidNotePath::NotMarkdown,
+            InvalidNotePath::EmptySegment,
+            InvalidNotePath::Hidden,
+        ] {
+            assert!(error.to_string().starts_with("Invalid note path"), "{error}");
+        }
+    }
 }

@@ -109,4 +109,47 @@ mod tests {
         assert!(!is_origin_allowed(Some("not a url"), &allowed));
         assert!(!is_origin_allowed(Some("file:///etc/passwd"), &allowed));
     }
+
+    #[test]
+    fn parses_bare_and_mixed_case_hostnames() {
+        assert_eq!(parse_hostname(Some("127.0.0.1:8787")).as_deref(), Some("127.0.0.1"));
+        assert_eq!(parse_hostname(Some("attacker.example")).as_deref(), Some("attacker.example"));
+        assert_eq!(parse_hostname(Some("Attacker.Example")).as_deref(), Some("attacker.example"));
+    }
+
+    #[test]
+    fn rejects_smuggled_userinfo_and_paths() {
+        for header in ["attacker.example@127.0.0.1", "127.0.0.1/../x", "attacker.example#@127.0.0.1", "127.0.0.1 x"] {
+            assert_eq!(parse_hostname(Some(header)), None, "{header:?}");
+        }
+    }
+
+    #[test]
+    fn default_allowlist_rejects_rebound_and_lan_hosts() {
+        let allowed = build_allowed_hosts(None);
+        for host in ["localhost:8787", "127.0.0.1:8787", "[::1]:8787"] {
+            assert!(is_host_allowed(Some(host), &allowed), "{host} should be allowed");
+        }
+        for host in ["attacker.example", "attacker.example:8787", "192.168.1.5:8787"] {
+            assert!(!is_host_allowed(Some(host), &allowed), "{host} should be rejected");
+        }
+    }
+
+    #[test]
+    fn extra_hosts_do_not_open_up_everything() {
+        let allowed = build_allowed_hosts(Some("192.168.1.5, mybox.local:8787"));
+        assert!(is_host_allowed(Some("192.168.1.5:8787"), &allowed));
+        assert!(is_host_allowed(Some("mybox.local"), &allowed));
+        assert!(!is_host_allowed(Some("attacker.example"), &allowed));
+    }
+
+    #[test]
+    fn origin_checks_ignore_loopback_host_with_foreign_origin() {
+        let allowed = build_allowed_hosts(None);
+        assert!(is_origin_allowed(Some(""), &allowed));
+        assert!(is_origin_allowed(Some("http://localhost:6274"), &allowed));
+        assert!(is_origin_allowed(Some("http://127.0.0.1:8787"), &allowed));
+        assert!(!is_origin_allowed(Some("http://attacker.example"), &allowed));
+        assert!(!is_origin_allowed(Some("https://attacker.example"), &allowed));
+    }
 }

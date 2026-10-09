@@ -59,4 +59,45 @@ mod tests {
         assert!(!is_path_writable("MCP/../x.md", scope));
         assert!(!is_path_writable("MCP/..\\x.md", scope));
     }
+
+    #[test]
+    fn whitespace_only_folder_lists_are_unrestricted() {
+        for raw in ["  ", ",", " , "] {
+            assert_eq!(parse_write_folders(Some(raw)), None, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn parses_folder_lists() {
+        assert_eq!(parse_write_folders(Some("MCP")), Some(folders(&["MCP"])));
+        assert_eq!(parse_write_folders(Some("/MCP/, Inbox/")), Some(folders(&["MCP", "Inbox"])));
+        assert_eq!(parse_write_folders(Some("projects/active")), Some(folders(&["projects/active"])));
+    }
+
+    #[test]
+    fn allows_nested_paths_in_any_listed_folder() {
+        let scope = folders(&["MCP", "Inbox"]);
+        for path in ["MCP/note.md", "MCP/deep/nested/note.md", "Inbox/todo.md"] {
+            assert!(is_path_writable(path, Some(&scope)), "{path} should be writable");
+        }
+        for path in ["daily/2026-07-30.md", "root-note.md", "MCPx/note.md", "MCP.md"] {
+            assert!(!is_path_writable(path, Some(&scope)), "{path} should not be writable");
+        }
+    }
+
+    #[test]
+    fn denies_every_traversal_form() {
+        let scope = folders(&["MCP"]);
+        for path in ["MCP/../../etc/passwd", "../MCP/note.md", "MCP\\..\\daily\\evil.md"] {
+            assert!(!is_path_writable(path, Some(&scope)), "{path} should not be writable");
+        }
+    }
+
+    #[test]
+    fn nested_folder_scope_excludes_siblings_and_parent() {
+        let scope = folders(&["projects/active"]);
+        assert!(is_path_writable("projects/active/note.md", Some(&scope)));
+        assert!(!is_path_writable("projects/archive/note.md", Some(&scope)));
+        assert!(!is_path_writable("projects/note.md", Some(&scope)));
+    }
 }
