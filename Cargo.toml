@@ -30,7 +30,7 @@ regex = "1"
 rmcp = { version = "3.5.1", default-features = false, features = ["server", "transport-streamable-http-server"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 schemars = "1"
-scrypt = { version = "0.11", default-features = false }
+scrypt = { version = "0.12", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_norway = "0.9"
