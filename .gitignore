@@ -27,3 +27,5 @@ CLAUDE.md
 
 # Local deployment files
 Dockerfile.dev.fly
+# Rust build output
+/target/

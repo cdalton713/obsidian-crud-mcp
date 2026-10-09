@@ -1,0 +1,56 @@
+[package]
+name = "obsidian-crud-mcp"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Give any AI agent access to your Obsidian vault over MCP"
+license = "MIT"
+repository = "https://github.com/cdalton713/obsidian-crud-mcp"
+keywords = ["mcp", "obsidian", "remotely-save", "s3", "claude"]
+categories = ["command-line-utilities", "web-programming::http-server"]
+
+[dependencies]
+aes-gcm = "0.10"
+anyhow = "1"
+async-trait = "0.1"
+aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client", "credentials-process", "sso"] }
+aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+axum = "0.8"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+futures = "0.3"
+hex = "0.4"
+jsonschema = { version = "0.58", default-features = false }
+markdown = "1.0.0"
+notify = "8"
+parking_lot = "0.12"
+percent-encoding = "2"
+rand = "0.9"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+schemars = "1"
+scrypt = { version = "0.11", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_norway = "0.9"
+serde_urlencoded = "0.7"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
