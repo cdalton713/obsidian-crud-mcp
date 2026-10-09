@@ -6,12 +6,16 @@ while read local_ref local_sha remote_ref remote_sha; do
     case "$local_ref" in
         refs/tags/v*)
             TAG_VERSION="${local_ref#refs/tags/v}"
-            PKG_VERSION=$(node -p "require('./package.json').version")
+            CRATE_VERSION=$(sed -nE 's/^version = "([^"]+)"$/\1/p' Cargo.toml | head -n 1)
+            SERVER_VERSION=$(sed -nE 's/^    "version": "([^"]+)",?$/\1/p' server.json | head -n 1)
             CHANGELOG_HAS=$(grep -c "^## ${TAG_VERSION}$" CHANGELOG.md)
 
             ERRORS=""
-            if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
-                ERRORS="${ERRORS}\n  package.json: ${PKG_VERSION} (expected ${TAG_VERSION})"
+            if [ "$CRATE_VERSION" != "$TAG_VERSION" ]; then
+                ERRORS="${ERRORS}\n  Cargo.toml: ${CRATE_VERSION} (expected ${TAG_VERSION})"
+            fi
+            if [ "$SERVER_VERSION" != "$TAG_VERSION" ]; then
+                ERRORS="${ERRORS}\n  server.json: ${SERVER_VERSION} (expected ${TAG_VERSION})"
             fi
             if [ "$CHANGELOG_HAS" = "0" ]; then
                 ERRORS="${ERRORS}\n  CHANGELOG.md: missing ## ${TAG_VERSION} section"

@@ -1,8 +1,5 @@
-# Dependencies and build output
-node_modules/
-dist/
-coverage/
-*.tsbuildinfo
+# Build output
+/target/
 
 # Local environment files
 .env
@@ -27,5 +24,3 @@ CLAUDE.md
 
 # Local deployment files
 Dockerfile.dev.fly
-# Rust build output
-/target/

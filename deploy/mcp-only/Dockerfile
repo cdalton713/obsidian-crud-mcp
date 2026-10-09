@@ -9,4 +9,4 @@ ENV DATA_DIR=/data
 
 EXPOSE 8787
 
-CMD ["node", "dist/main.js"]
+CMD ["obsidian-crud-mcp"]

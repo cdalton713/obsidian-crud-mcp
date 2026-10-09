@@ -1,37 +1,31 @@
-# MCP server image — used by CI to publish to ghcr.io
+# MCP server image, published to ghcr.io by CI.
 
-# Everything installed here is platform-independent JavaScript (no production
-# dependency ships a native addon), so install and build once on the build host
-# instead of under emulation for every target platform.
-FROM --platform=$BUILDPLATFORM node:22-slim AS build
+FROM rust:1.97.0-slim-bookworm AS build
+
+# aws-lc-sys (TLS for the S3 client) builds C code with cmake.
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends cmake \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN npm install --global "$(node -p 'require("./package.json").packageManager')"
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
-
-COPY tsconfig.json tsdown.config.ts ./
+COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
-RUN pnpm run build
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    cargo build --release --locked \
+    && cp target/release/obsidian-crud-mcp /usr/local/bin/obsidian-crud-mcp
 
-# Production dependencies only, in a separate tree.
-WORKDIR /prod
-RUN cp /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --prod
+# Runtime image: the binary plus CA certificates for S3 and Cloudflare.
+FROM debian:bookworm-slim
 
-# Runtime image without the pnpm installation or store.
-FROM node:22-slim
+LABEL io.modelcontextprotocol.server.name="io.github.cdalton713/obsidian-crud-mcp"
 
-ENV NODE_ENV=production
-WORKDIR /app
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY package.json ./
-COPY --from=build /prod/node_modules/ node_modules/
-COPY --from=build /app/dist/ dist/
+COPY --from=build /usr/local/bin/obsidian-crud-mcp /usr/local/bin/obsidian-crud-mcp
 
 EXPOSE 8787
 
-CMD ["node", "dist/main.js"]
+CMD ["obsidian-crud-mcp"]

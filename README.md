@@ -4,8 +4,7 @@
 
 ![MCP](https://img.shields.io/badge/MCP-compatible-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Node](https://img.shields.io/badge/node-22%2B-green.svg)
-![TypeScript](https://img.shields.io/badge/TypeScript-7-blue.svg)
+![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)
 
 Give any AI agent access to your Obsidian vault over MCP. Run it locally against your vault files, or pair it with [Remotely Save](https://github.com/remotely-save/remotely-save) and an S3 bucket and deploy it to the cloud so it works even when your machine is off.
 
@@ -65,7 +64,7 @@ flowchart LR
 | Need it always available? | Go to                                                                        |
 | ------------------------- | ---------------------------------------------------------------------------- |
 | Yes                       | [Setup A](#a-deploy-to-the-cloud-cloudflare--flyio) — Cloudflare R2 + Fly.io |
-| No                        | [Setup B](#b-run-on-your-machine) — filesystem mode, pnpm dlx or Docker      |
+| No                        | [Setup B](#b-run-on-your-machine) — filesystem mode, binary or Docker        |
 
 ---
 
@@ -130,12 +129,12 @@ Skip this step to deploy without semantic search; you can add it later.
 5. **My Profile** → **API Tokens** → **Create Token** → **Custom token**. Add **Account** → **AI Search** → **Edit**, and **Account** → **AI Search** → **Run**, for your account. This is the server's token (`CF_AI_SEARCH_TOKEN`), separate from the service token in step 2.
 6. Check the token: `curl -s https://api.cloudflare.com/client/v4/user/tokens/verify -H "Authorization: Bearer <token>"` returns `"status": "active"`.
 
-The first index of a large vault takes a while (roughly 15 notes a minute). Track it with `pnpm dlx wrangler ai-search stats <instance>`.
+The first index of a large vault takes a while (roughly 15 notes a minute). Track it with `npx wrangler ai-search stats <instance>`.
 
-From the command line instead of steps 1–4 (run `pnpm dlx wrangler login` first; the dashboard is still needed for the sync interval):
+From the command line instead of steps 1–4 (run `npx wrangler login` first; the dashboard is still needed for the sync interval):
 
 ```bash
-pnpm dlx wrangler ai-search create obsidian-vault --type r2 --source obsidian-vault \
+npx wrangler ai-search create obsidian-vault --type r2 --source obsidian-vault \
   --include-items '**/*.md' --exclude-items '.obsidian/**' '_debug_remotely_save/**' --hybrid-search
 ```
 
@@ -220,12 +219,13 @@ A suspended Fly machine does not poll the bucket. It catches up on the first pol
 
 Run the MCP server locally against your vault folder. Machine must stay on for agents to reach it.
 
-Requires Node 22.19.0 or later and [pnpm 12](https://pnpm.io/installation).
+Download a prebuilt Linux binary from the [releases page](https://github.com/cdalton713/obsidian-crud-mcp/releases), or build it with [Rust](https://rustup.rs/):
 
 ```bash
+cargo install --locked --git https://github.com/cdalton713/obsidian-crud-mcp
 VAULT_PATH=~/Documents/MyVault \
 VAULT_NAME=MyVault \
-pnpm dlx obsidian-crud-mcp
+obsidian-crud-mcp
 ```
 
 **Or with Docker:**
@@ -331,10 +331,13 @@ fewer paths or increase the budget. Filesystem read failures can appear as
 `update_note_properties` takes a `path`, a `set` object, and/or a `remove` array.
 For example, `set: {"status":"done","tags":["project"],"reviewed":true}` sets
 typed properties without replacing the note body. Values can be strings, numbers,
-booleans, `null`, or lists of these types. Frontmatter is read and written with `@11ty/gray-matter`.
-Updates serialize the YAML again, so comments, spacing, quoting, and list style
-can change. The Markdown body stays byte-for-byte identical. Invalid YAML is
-rejected, and unrelated property values are preserved.
+booleans, `null`, or lists of these types. Untouched properties keep their exact
+text, comments included; set properties are rewritten in place (new ones go after
+the last key), and a removed property takes the comments directly above it along.
+Frontmatter too unusual to edit line by line (for example an anchor shared with a
+changed key) is serialized again from its values. The Markdown body stays
+byte-for-byte identical. Invalid YAML is rejected, and unrelated property values
+are preserved.
 Read-only mode and writable-folder restrictions also apply to this tool.
 
 `get_note_outline` returns document-level headings and block IDs with 1-based,
@@ -363,7 +366,7 @@ recurrence are not interpreted.
 Set `MCP_AUTH_TOKEN` to a password to enable authentication:
 
 ```bash
-MCP_AUTH_TOKEN=mysecretpassword pnpm dlx obsidian-crud-mcp
+MCP_AUTH_TOKEN=mysecretpassword obsidian-crud-mcp
 ```
 
 The server includes a self-contained OAuth 2.1 provider. When an agent connects:
@@ -421,8 +424,8 @@ Set `VAULT_PATH` for filesystem mode, or `S3_BUCKET` plus `VAULT_PATH` (the mirr
 Test the server interactively using the [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
 
 ```bash
-VAULT_PATH=~/Documents/MyVault pnpm dlx obsidian-crud-mcp &
-pnpm dlx @modelcontextprotocol/inspector
+VAULT_PATH=~/Documents/MyVault obsidian-crud-mcp &
+npx @modelcontextprotocol/inspector
 ```
 
 Set transport to **Streamable HTTP**, enter `http://localhost:8787/mcp`, and connect.
@@ -433,7 +436,7 @@ Set transport to **Streamable HTTP**, enter `http://localhost:8787/mcp`, and con
 
 | How you run it               | How to update                                                                                                                                                                                                           |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm dlx obsidian-crud-mcp` | Run `pnpm dlx obsidian-crud-mcp@latest`                                                                                                                                                                                 |
+| Binary                       | Download the latest release, or rerun the `cargo install` command above                                                                                                                                                  |
 | Fly.io                       | `git pull`, then from the repo root: `fly deploy . --config deploy/mcp-only/fly.toml --dockerfile Dockerfile`. If you lost the fly.toml, run `fly config save --app your-app-name` in `deploy/mcp-only/` to restore it. |
 | Docker                       | `docker pull ghcr.io/cdalton713/obsidian-crud-mcp:latest` and restart                                                                                                                                                   |
 
@@ -448,7 +451,6 @@ Set transport to **Streamable HTTP**, enter `http://localhost:8787/mcp`, and con
 - **No end-to-end encryption.** Remotely Save's encryption password must stay empty for the server to read the bucket.
 - **Text only.** Binary attachments are not exposed through MCP tools.
 - **Deep links depend on the client.** Obsidian `obsidian://` deep links are included in every tool response. They work on Claude Mobile and in browsers, but some clients (Claude Desktop) may not render them as clickable links.
-- **Node 22+ required.**
 - **Setup script requires bash.** The `deploy/setup.sh` script works on macOS and Linux. On Windows, use WSL or Git Bash.
 
 ---
@@ -475,21 +477,20 @@ This software is provided as-is under the [MIT license](https://github.com/cdalt
 git clone https://github.com/cdalton713/obsidian-crud-mcp.git
 cd obsidian-crud-mcp
 bash scripts/setup.sh
-# Open a new terminal before running the commands below.
-pnpm test          # unit tests
-pnpm run test:e2e  # integration tests
-pnpm run typecheck # strict TypeScript checks
+cargo test --lib --bins          # unit tests
+cargo test --test e2e            # end-to-end tests against the built server
+cargo clippy --all-targets       # lints
+cargo fmt                        # formatting
+VAULT_PATH=~/Documents/MyVault cargo run   # run the server from source
 ```
 
-The setup script installs [proto](https://moonrepo.dev/docs/proto/install) if needed,
-installs the pinned tools and dependencies, and builds the project. It supports
-macOS, Linux, and WSL and configures your shell so the tools work in new terminals.
-The `.prototools` file pins proto, Node, and pnpm for local development and CI.
-Keep its pnpm version and `package.json`'s `packageManager` version in sync;
-Docker reads the pnpm version from `packageManager`.
+The setup script installs [rustup](https://rustup.rs/) if needed, builds the
+project, and points git at the hooks in `.githooks`. `rust-toolchain.toml`
+selects the stable toolchain with clippy and rustfmt; the Docker image pins the
+exact Rust version it builds with.
 
-S3 mode is unit-tested against an in-memory bucket (`aws-sdk-client-mock`), so the
-tests need no cloud credentials.
+S3 mode is unit-tested against an in-memory bucket (a fake `ObjectStore`), so
+the tests need no cloud credentials.
 
 ---
 
@@ -500,5 +501,7 @@ MIT — see [LICENSE](https://github.com/cdalton713/obsidian-crud-mcp/blob/main/
 ## Acknowledgements
 
 - [Remotely Save](https://github.com/remotely-save/remotely-save) — the Obsidian plugin that syncs the vault to S3
-- [FastMCP](https://github.com/punkpeye/fastmcp) — TypeScript MCP framework
+- [axum](https://github.com/tokio-rs/axum) and [Tokio](https://tokio.rs/) — the HTTP server and async runtime
+- [markdown-rs](https://github.com/wooorm/markdown-rs) — CommonMark parsing for outlines, block IDs and tasks
+- [AWS SDK for Rust](https://github.com/awslabs/aws-sdk-rust) — S3 mode bucket access
 - [Fly.io](https://fly.io/) — deployment platform

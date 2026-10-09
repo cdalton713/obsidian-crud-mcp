@@ -1,3 +1,2 @@
 #!/bin/sh
-export PATH="/opt/homebrew/bin:/opt/homebrew/opt/node@22/bin:$PATH"
-pnpm run lint && pnpm test
+cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked --lib

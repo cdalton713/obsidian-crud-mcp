@@ -9,8 +9,8 @@
     "version": "1.0.0",
     "packages": [
         {
-            "registryType": "npm",
-            "identifier": "obsidian-crud-mcp",
+            "registryType": "oci",
+            "identifier": "ghcr.io/cdalton713/obsidian-crud-mcp",
             "version": "1.0.0",
             "transport": {
                 "type": "streamable-http",

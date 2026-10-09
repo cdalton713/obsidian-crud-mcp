@@ -1,9 +1,8 @@
-node_modules/
-dist/
+target/
 .git/
 .github/
 *.md
 docker-compose.yml
 .env
-__tests__/
+tests/
 fly.toml
