@@ -32,19 +32,13 @@ pub fn system_time_ms(time: SystemTime) -> f64 {
 
 /// The current time in whole milliseconds since the Unix epoch.
 pub fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or_default()
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or_default()
 }
 
 /// Human-friendly ordering for paths: case-insensitive first, lowercase before
 /// uppercase on ties, close to `String.prototype.localeCompare`.
 pub fn locale_cmp(a: &str, b: &str) -> Ordering {
-    let folded = a
-        .chars()
-        .flat_map(char::to_lowercase)
-        .cmp(b.chars().flat_map(char::to_lowercase));
+    let folded = a.chars().flat_map(char::to_lowercase).cmp(b.chars().flat_map(char::to_lowercase));
     folded.then_with(|| b.cmp(a))
 }
 

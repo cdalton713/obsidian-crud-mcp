@@ -150,7 +150,13 @@ pub fn describe_no_match(s: &ListingScope<'_>) -> String {
 pub fn describe_listing(s: &ListingScope<'_>, page: &ListingPage<'_>) -> String {
     let truncated = page.matched > page.shown;
     // "5 notes match name=…" reads as a sentence; "Showing 100 of 150 notes matching …" needs the participle.
-    let verb = if truncated { "matching" } else if page.matched == 1 { "matches" } else { "match" };
+    let verb = if truncated {
+        "matching"
+    } else if page.matched == 1 {
+        "matches"
+    } else {
+        "match"
+    };
     let filter_clause = if s.filters.is_empty() { String::new() } else { format!(" {verb} {}", s.filters.join(", ")) };
     let folder_clause = s.folder.map(|f| format!(" in folder \"{}\"", folder_label(f))).unwrap_or_default();
     let mut scope_parts: Vec<String> = Vec::new();

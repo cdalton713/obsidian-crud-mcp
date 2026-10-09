@@ -15,7 +15,7 @@ use schemars::generate::SchemaSettings;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
 use thiserror::Error;
-use tracing::{debug, enabled, info, Level};
+use tracing::{Level, debug, enabled, info};
 
 use crate::vault::VaultError;
 
@@ -199,9 +199,8 @@ impl McpServer {
 
     fn initialize(&self, params: &Map<String, Value>) -> Value {
         let requested = params.get("protocolVersion").and_then(Value::as_str);
-        let version = requested
-            .filter(|v| SUPPORTED_PROTOCOL_VERSIONS.contains(v))
-            .unwrap_or(SUPPORTED_PROTOCOL_VERSIONS[0]);
+        let version =
+            requested.filter(|v| SUPPORTED_PROTOCOL_VERSIONS.contains(v)).unwrap_or(SUPPORTED_PROTOCOL_VERSIONS[0]);
         json!({
             "protocolVersion": version,
             "capabilities": { "tools": {}, "logging": {} },

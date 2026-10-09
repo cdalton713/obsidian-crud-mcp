@@ -107,7 +107,9 @@ fn lenient_integer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<
             .and_then(|n| u32::try_from(n).ok())
             .map(Some)
             .ok_or_else(|| D::Error::custom("limit must be a whole number")),
-        Some(Value::String(s)) => s.trim().parse().map(Some).map_err(|_| D::Error::custom("limit must be a whole number")),
+        Some(Value::String(s)) => {
+            s.trim().parse().map(Some).map_err(|_| D::Error::custom("limit must be a whole number"))
+        }
         Some(_) => Err(D::Error::custom("limit must be a whole number")),
     }
 }

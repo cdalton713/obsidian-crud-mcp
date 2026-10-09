@@ -15,13 +15,10 @@ use crate::util::{char_len, take_chars};
 
 static ATX_OPEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^ {0,3}#{1,6}(?:[ \t]+|$)").unwrap());
 static ATX_CLOSE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[ \t]+#+[ \t]*$").unwrap());
-static SETEXT_UNDERLINE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\r?\n {0,3}(?:=+|-+)[ \t]*$").unwrap());
-static SETEXT_LINE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^ {0,3}(?:=+|-+)[ \t]*(?:\r\n|\n|\r|$)").unwrap());
+static SETEXT_UNDERLINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\r?\n {0,3}(?:=+|-+)[ \t]*$").unwrap());
+static SETEXT_LINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^ {0,3}(?:=+|-+)[ \t]*(?:\r\n|\n|\r|$)").unwrap());
 static ATX_START: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^ {0,3}#").unwrap());
-static BLOCK_MARKER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?:^|[ \t])\^([A-Za-z0-9-]+)[ \t]*$").unwrap());
+static BLOCK_MARKER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|[ \t])\^([A-Za-z0-9-]+)[ \t]*$").unwrap());
 static CHECKBOX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[([ \txX])\](?:\s+|$)").unwrap());
 static LINE_BREAK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:\r\n|\n|\r)").unwrap());
 
@@ -91,10 +88,8 @@ fn parse(content: &str) -> Node {
 /// Parse with frontmatter blanked out, so source positions stay where they are.
 fn markdown_tree(content: &str) -> Node {
     let body_offset = split_frontmatter(content).body_offset;
-    let mut masked: String = content[..body_offset]
-        .bytes()
-        .map(|b| if b == b'\r' || b == b'\n' { b as char } else { ' ' })
-        .collect();
+    let mut masked: String =
+        content[..body_offset].bytes().map(|b| if b == b'\r' || b == b'\n' { b as char } else { ' ' }).collect();
     masked.push_str(&content[body_offset..]);
     parse(&masked)
 }
@@ -147,10 +142,7 @@ pub fn note_structure(content: &str) -> NoteStructure {
             headings[parent].end_line = start_line - 1;
         }
         let eol = LINE_BREAK.find(&content[range.end..]).map_or(0, |m| m.len());
-        let mut path: Vec<String> = parents
-            .iter()
-            .filter_map(|&p| headings[p].heading.last().cloned())
-            .collect();
+        let mut path: Vec<String> = parents.iter().filter_map(|&p| headings[p].heading.last().cloned()).collect();
         path.push(title);
         headings.push(NoteHeading {
             heading: path,
@@ -184,10 +176,7 @@ fn collect_blocks(content: &str, siblings: &[Node], blocks: &mut Vec<NoteBlock>)
         let id = marker[1].to_owned();
         if content[range.start..marker_start].trim().is_empty() {
             let Some(previous) = i.checked_sub(1).map(|p| &siblings[p]) else { continue };
-            if matches!(
-                previous,
-                Node::Heading(_) | Node::ThematicBreak(_) | Node::Definition(_) | Node::Html(_)
-            ) {
+            if matches!(previous, Node::Heading(_) | Node::ThematicBreak(_) | Node::Definition(_) | Node::Html(_)) {
                 continue;
             }
             let Some((target, target_start, target_end)) = span(content, previous) else { continue };
@@ -220,12 +209,9 @@ pub fn select_note_range(
             .filter(|h| h.heading == heading)
             .map(|h| h.content_start..h.end)
             .collect(),
-        (None, Some(block)) => note_structure(content)
-            .blocks
-            .into_iter()
-            .filter(|b| b.id == block)
-            .map(|b| b.start..b.end)
-            .collect(),
+        (None, Some(block)) => {
+            note_structure(content).blocks.into_iter().filter(|b| b.id == block).map(|b| b.start..b.end).collect()
+        }
     };
     match matches.as_slice() {
         [] => Err(TargetError::NotFound),

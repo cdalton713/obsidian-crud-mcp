@@ -3,11 +3,8 @@
 
 /// Parse `WRITE_FOLDERS` into a normalized folder list, or `None` for unrestricted.
 pub fn parse_write_folders(raw: Option<&str>) -> Option<Vec<String>> {
-    let folders: Vec<String> = raw?
-        .split(',')
-        .map(|f| f.trim().trim_matches('/').to_owned())
-        .filter(|f| !f.is_empty())
-        .collect();
+    let folders: Vec<String> =
+        raw?.split(',').map(|f| f.trim().trim_matches('/').to_owned()).filter(|f| !f.is_empty()).collect();
     (!folders.is_empty()).then_some(folders)
 }
 
@@ -24,11 +21,7 @@ pub fn is_path_writable(path: &str, write_folders: Option<&[String]>) -> bool {
     if normalized.split(['/', '\\']).any(|segment| segment == "..") {
         return false;
     }
-    folders.iter().any(|folder| {
-        normalized
-            .strip_prefix(folder.as_str())
-            .is_some_and(|rest| rest.starts_with('/'))
-    })
+    folders.iter().any(|folder| normalized.strip_prefix(folder.as_str()).is_some_and(|rest| rest.starts_with('/')))
 }
 
 #[cfg(test)]

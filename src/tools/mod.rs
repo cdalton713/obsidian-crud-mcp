@@ -100,10 +100,30 @@ pub fn build_tools(ctx: ToolContext) -> Vec<Tool> {
     let has_semantic = ctx.semantic.is_some();
     let ctx = Arc::new(ctx);
     let mut tools = vec![
-        tool(&ctx, "list_tasks", "List standard Markdown checkbox tasks with text, completion state, 1-based source lines, and Obsidian URLs. Defaults to incomplete tasks. Ignores frontmatter and code; plugin-specific statuses, recurrence, and due dates are not interpreted. Follow next_cursor until null; skipped notes are reported.", retrieval::list_tasks),
-        tool(&ctx, "get_note_outline", "Get document-level headings, full heading paths, and paragraph or standalone block IDs. Returns 1-based inclusive source line ranges; heading ranges include child sections. Ignores frontmatter and code. Use the returned heading paths or block IDs with read_note and edit_note.", retrieval::get_note_outline),
-        tool(&ctx, "search_notes", "Search note content for a literal, single-line phrase (not regex or Obsidian query syntax). Returns one excerpt per matching line, 1-based line numbers, and URLs. Reads current content from disk, the whole vault by default; follow next_cursor while it is not null. Reports skipped notes, including notes over 1 million characters.", retrieval::search_notes),
-        tool(&ctx, "read_notes", "Read up to 20 notes in requested order. Returns JSON with per-note status, Obsidian URLs, and missing_paths for notes that do not exist. max_chars caps the entire serialized response; truncated notes and omitted paths are explicit. Read omitted content with read_note.", retrieval::read_notes),
+        tool(
+            &ctx,
+            "list_tasks",
+            "List standard Markdown checkbox tasks with text, completion state, 1-based source lines, and Obsidian URLs. Defaults to incomplete tasks. Ignores frontmatter and code; plugin-specific statuses, recurrence, and due dates are not interpreted. Follow next_cursor until null; skipped notes are reported.",
+            retrieval::list_tasks,
+        ),
+        tool(
+            &ctx,
+            "get_note_outline",
+            "Get document-level headings, full heading paths, and paragraph or standalone block IDs. Returns 1-based inclusive source line ranges; heading ranges include child sections. Ignores frontmatter and code. Use the returned heading paths or block IDs with read_note and edit_note.",
+            retrieval::get_note_outline,
+        ),
+        tool(
+            &ctx,
+            "search_notes",
+            "Search note content for a literal, single-line phrase (not regex or Obsidian query syntax). Returns one excerpt per matching line, 1-based line numbers, and URLs. Reads current content from disk, the whole vault by default; follow next_cursor while it is not null. Reports skipped notes, including notes over 1 million characters.",
+            retrieval::search_notes,
+        ),
+        tool(
+            &ctx,
+            "read_notes",
+            "Read up to 20 notes in requested order. Returns JSON with per-note status, Obsidian URLs, and missing_paths for notes that do not exist. max_chars caps the entire serialized response; truncated notes and omitted paths are explicit. Read omitted content with read_note.",
+            retrieval::read_notes,
+        ),
     ];
     if has_semantic {
         tools.push(tool(&ctx, "semantic_search", "Find notes by meaning, not exact wording: a ranked hybrid (embedding + keyword) search over the whole vault. Returns the best-matching passages with note path, score (0 to 1) and URL; several passages may come from one note. The index refreshes on a schedule and shortly after this server writes a note, so an edit made minutes ago may be missing; search_notes always reads current content. Use this first when you do not know the exact words.", semantic::semantic_search));
@@ -123,7 +143,12 @@ pub fn build_tools(ctx: ToolContext) -> Vec<Tool> {
     tools.push(tool(&ctx, "list_tags", "List all tags used in the vault, sorted by frequency. Use this to discover tags before filtering with list_notes.", list_tags));
     if !read_only {
         tools.push(tool(&ctx, "edit_note", format!("Edit a note or a selected heading section/block. Use 'append' (default), 'prepend' (after frontmatter for whole notes), or 'replace' to swap old_text with new content. For replace, old_text must match exactly once within the selected content. Heading lines and block IDs are preserved. Missing or ambiguous targets are rejected.{scope_note}"), edit_note));
-        tools.push(tool(&ctx, "delete_note", format!("Delete a note from the Obsidian vault.{scope_note}"), delete_note));
+        tools.push(tool(
+            &ctx,
+            "delete_note",
+            format!("Delete a note from the Obsidian vault.{scope_note}"),
+            delete_note,
+        ));
         tools.push(tool(&ctx, "move_note", format!("Move or rename a note. Use this to rename a note within the same folder, move it to a different folder, or both at once. Creates destination folders automatically.{scope_note}"), move_note));
     }
     tools.push(tool(&ctx, "get_note_metadata", "Get metadata about a note without reading its full content. Returns frontmatter, tags, outgoing links, backlinks (notes that link to this one), size, and timestamps. Use this to navigate the knowledge graph.", get_note_metadata));
@@ -246,7 +271,8 @@ async fn list_notes(ctx: Arc<ToolContext>, args: ListNotesParams) -> Result<Stri
     let limit = args.limit.unwrap_or(100) as usize;
     let omitted: Vec<String> = notes.iter().skip(limit).map(|n| n.path.clone()).collect();
     let shown = &notes[..notes.len().min(limit)];
-    let page = ListingPage { shown: shown.len(), matched: notes.len(), sort_by: sort_by.as_str(), limit, omitted: &omitted };
+    let page =
+        ListingPage { shown: shown.len(), matched: notes.len(), sort_by: sort_by.as_str(), limit, omitted: &omitted };
     let mut lines = vec![describe_listing(&scope, &page)];
     lines.extend(shown.iter().map(|n| {
         let date = if n.mtime != 0.0 { iso_timestamp(n.mtime)[..16].to_owned() } else { String::new() };
@@ -378,11 +404,7 @@ async fn edit_note(ctx: Arc<ToolContext>, args: EditNoteParams) -> Result<String
     }
     ctx.index.update(&path, &updated, Some(now_ms() as f64));
     ctx.changed();
-    Ok(format!(
-        "Note edited ({}): {path}\n[Open in Obsidian]({})",
-        op.as_str(),
-        make_deep_link(&ctx.vault_name, &path)
-    ))
+    Ok(format!("Note edited ({}): {path}\n[Open in Obsidian]({})", op.as_str(), make_deep_link(&ctx.vault_name, &path)))
 }
 
 async fn delete_note(ctx: Arc<ToolContext>, args: DeleteNoteParams) -> Result<String, ToolError> {

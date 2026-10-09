@@ -99,10 +99,9 @@ impl Vars {
         min: T,
     ) -> Result<T, ConfigError> {
         let Some(raw) = self.optional(name) else { return Ok(default) };
-        let value: T = raw.parse().map_err(|_| ConfigError::Invalid {
-            name,
-            reason: format!("expected a number, got '{raw}'"),
-        })?;
+        let value: T = raw
+            .parse()
+            .map_err(|_| ConfigError::Invalid { name, reason: format!("expected a number, got '{raw}'") })?;
         if value < min {
             return Err(ConfigError::Invalid { name, reason: format!("must be at least {min}") });
         }
@@ -134,7 +133,10 @@ impl Config {
             .parse::<u16>()
             .ok()
             .filter(|p| *p >= 1 && port_raw.bytes().all(|b| b.is_ascii_digit()))
-            .ok_or_else(|| ConfigError::Invalid { name: "PORT", reason: format!("expected 1-65535, got '{port_raw}'") })?;
+            .ok_or_else(|| ConfigError::Invalid {
+                name: "PORT",
+                reason: format!("expected 1-65535, got '{port_raw}'"),
+            })?;
         let vault_path = vars.raw("VAULT_PATH").filter(|v| !v.is_empty()).ok_or(ConfigError::MissingVaultPath)?;
         let vault_name = vars.string_or("VAULT_NAME", "MyVault");
 
@@ -151,7 +153,11 @@ impl Config {
             None => None,
         };
 
-        let cf = [vars.optional("CF_ACCOUNT_ID"), vars.optional("CF_AI_SEARCH_TOKEN"), vars.optional("CF_AI_SEARCH_INSTANCE")];
+        let cf = [
+            vars.optional("CF_ACCOUNT_ID"),
+            vars.optional("CF_AI_SEARCH_TOKEN"),
+            vars.optional("CF_AI_SEARCH_INSTANCE"),
+        ];
         let semantic = match cf {
             [Some(account_id), Some(token), Some(instance)] => Some(SemanticConfig {
                 account_id,

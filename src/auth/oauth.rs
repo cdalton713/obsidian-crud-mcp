@@ -16,13 +16,13 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 
+use axum::Json;
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::Json;
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
@@ -191,7 +191,13 @@ fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
-fn render_password_page(code: &str, csrf: &str, redirect_host: &str, client_name: Option<&str>, error: Option<&str>) -> String {
+fn render_password_page(
+    code: &str,
+    csrf: &str,
+    redirect_host: &str,
+    client_name: Option<&str>,
+    error: Option<&str>,
+) -> String {
     let who = match client_name {
         Some(name) => format!("<b>{}</b> (name self-reported)", escape_html(name)),
         None => "An application".to_owned(),
@@ -262,7 +268,8 @@ struct ClientCredentials {
 /// or the request body (`client_secret_post`). `None` for a malformed Basic
 /// header or one that disagrees with credentials in the body.
 fn client_credentials(authorization: Option<&str>, body: &HashMap<String, String>) -> Option<ClientCredentials> {
-    let from_body = ClientCredentials { client_id: body.get("client_id").cloned(), secret: body.get("client_secret").cloned() };
+    let from_body =
+        ClientCredentials { client_id: body.get("client_id").cloned(), secret: body.get("client_secret").cloned() };
     let Some(encoded) = authorization.and_then(|a| BASIC.captures(a)).map(|c| c[1].to_owned()) else {
         return Some(from_body);
     };
@@ -354,7 +361,9 @@ impl OAuthProvider {
             };
             let persisted = Persisted {
                 tokens: to_values(state.tokens.iter().filter(|(_, r)| r.expires_at > now).collect()),
-                refresh_tokens: to_values(state.refresh_tokens.iter().filter(|(_, r)| r.refresh_expires_at > now).collect()),
+                refresh_tokens: to_values(
+                    state.refresh_tokens.iter().filter(|(_, r)| r.refresh_expires_at > now).collect(),
+                ),
                 clients: state.clients.iter().map(|(k, c)| (k.clone(), json!(c))).collect(),
             };
             serde_json::to_vec(&persisted).unwrap_or_default()
@@ -502,12 +511,8 @@ async fn register(State(auth): State<Arc<OAuthProvider>>, body: Bytes) -> Respon
         if state.clients.len() >= MAX_CLIENTS {
             // Evict the oldest client with no live tokens to make room; only
             // reject when every slot is held by a client with active tokens.
-            let active: HashSet<&str> = state
-                .tokens
-                .values()
-                .chain(state.refresh_tokens.values())
-                .map(|r| r.client_id.as_str())
-                .collect();
+            let active: HashSet<&str> =
+                state.tokens.values().chain(state.refresh_tokens.values()).map(|r| r.client_id.as_str()).collect();
             let oldest = state
                 .clients
                 .values()
@@ -542,7 +547,8 @@ async fn register(State(auth): State<Arc<OAuthProvider>>, body: Bytes) -> Respon
     // else falls back to the confidential-client default rather than silently
     // registering a method we don't understand.
     let requested = metadata.get("token_endpoint_auth_method");
-    let method = if requested.and_then(Value::as_str) == Some("none") { AuthMethod::None } else { AuthMethod::ClientSecretPost };
+    let method =
+        if requested.and_then(Value::as_str) == Some("none") { AuthMethod::None } else { AuthMethod::ClientSecretPost };
     let client = RegisteredClient {
         client_id: uuid::Uuid::new_v4().to_string(),
         client_secret: (method != AuthMethod::None).then(new_secret),
@@ -622,7 +628,8 @@ async fn authorize(State(auth): State<Arc<OAuthProvider>>, Query(query): Query<H
     info!("Auth: /oauth/authorize accepted client_id={client_id} redirect_uri={}", json!(redirect_uri));
     let csrf = new_secret();
     state.csrf.insert(code.clone(), csrf.clone());
-    Html(render_password_page(&code, &csrf, &host_of(&redirect_uri), client.client_name.as_deref(), None)).into_response()
+    Html(render_password_page(&code, &csrf, &host_of(&redirect_uri), client.client_name.as_deref(), None))
+        .into_response()
 }
 
 // --- Approval handler ---
@@ -633,7 +640,8 @@ async fn approve(State(auth): State<Arc<OAuthProvider>>, headers: HeaderMap, bod
     let code = field("code").unwrap_or_default().to_owned();
 
     let mut state = auth.state.lock();
-    let (Some(pending), Some(expected_csrf)) = (state.pending.get(&code).cloned(), state.csrf.get(&code).cloned()) else {
+    let (Some(pending), Some(expected_csrf)) = (state.pending.get(&code).cloned(), state.csrf.get(&code).cloned())
+    else {
         return (StatusCode::BAD_REQUEST, Html("<p>Invalid or expired authorization request.</p>")).into_response();
     };
     if !field("csrf").is_some_and(|csrf| safe_equal(csrf, &expected_csrf)) {
@@ -645,7 +653,8 @@ async fn approve(State(auth): State<Arc<OAuthProvider>>, headers: HeaderMap, bod
     let rerender = |state: &mut AuthState, message: &str, status: StatusCode| {
         let csrf = new_secret();
         state.csrf.insert(code.clone(), csrf.clone());
-        let page = render_password_page(&code, &csrf, &host_of(&pending.redirect_uri), client_name.as_deref(), Some(message));
+        let page =
+            render_password_page(&code, &csrf, &host_of(&pending.redirect_uri), client_name.as_deref(), Some(message));
         (status, Html(page)).into_response()
     };
 
@@ -653,7 +662,11 @@ async fn approve(State(auth): State<Arc<OAuthProvider>>, headers: HeaderMap, bod
     if now < state.locked_until {
         let wait = (state.locked_until - now + 999) / 1000;
         warn!("Auth: locked out, {wait}s remaining");
-        return rerender(&mut state, &format!("Too many attempts. Try again in {wait} seconds."), StatusCode::TOO_MANY_REQUESTS);
+        return rerender(
+            &mut state,
+            &format!("Too many attempts. Try again in {wait} seconds."),
+            StatusCode::TOO_MANY_REQUESTS,
+        );
     }
     if !field("password").is_some_and(|p| safe_equal(p, &auth.password)) {
         state.failed_attempts += 1;
@@ -720,7 +733,11 @@ async fn token(State(auth): State<Arc<OAuthProvider>>, headers: HeaderMap, body:
     }
 }
 
-async fn authorization_code_grant(auth: &OAuthProvider, form: &HashMap<String, String>, credentials: ClientCredentials) -> Response {
+async fn authorization_code_grant(
+    auth: &OAuthProvider,
+    form: &HashMap<String, String>,
+    credentials: ClientCredentials,
+) -> Response {
     let code = form.get("code").cloned().unwrap_or_default();
     let now = now_ms();
     let pending = {
@@ -786,7 +803,11 @@ async fn authorization_code_grant(auth: &OAuthProvider, form: &HashMap<String, S
     Json(auth.issue_tokens(&pending.client_id, now_ms() + auth.refresh_expiry_ms).await).into_response()
 }
 
-async fn refresh_token_grant(auth: &OAuthProvider, form: &HashMap<String, String>, credentials: ClientCredentials) -> Response {
+async fn refresh_token_grant(
+    auth: &OAuthProvider,
+    form: &HashMap<String, String>,
+    credentials: ClientCredentials,
+) -> Response {
     let refresh_token = form.get("refresh_token").cloned().unwrap_or_default();
     let Some(old) = auth.state.lock().refresh_tokens.get(&refresh_token).cloned() else {
         warn!("Auth: /oauth/token refresh_token unknown");

@@ -21,7 +21,7 @@ pub enum Authenticator {
     LocalOnly { allowed_hosts: BTreeSet<String> },
 }
 
-fn header_str<'a>(headers: &'a HeaderMap, name: header::HeaderName) -> Option<&'a str> {
+fn header_str(headers: &HeaderMap, name: header::HeaderName) -> Option<&str> {
     headers.get(name).and_then(|v| v.to_str().ok())
 }
 
@@ -47,7 +47,7 @@ impl Authenticator {
     }
 
     /// `Ok` to let the request through, or the response that refuses it.
-    pub fn check(&self, headers: &HeaderMap) -> Result<(), Response> {
+    pub fn check(&self, headers: &HeaderMap) -> Result<(), Box<Response>> {
         match self {
             Self::Token { expected, base_url, oauth } => {
                 let authorization = header_str(headers, header::AUTHORIZATION);
@@ -61,16 +61,18 @@ impl Authenticator {
                 if let Ok(value) = HeaderValue::from_str(&challenge) {
                     response.headers_mut().insert(header::WWW_AUTHENTICATE, value);
                 }
-                Err(response)
+                Err(Box::new(response))
             }
             Self::LocalOnly { allowed_hosts } => {
                 // The Host check defeats DNS rebinding; the Origin check defeats a
                 // direct cross-origin browser fetch to loopback (responses carry wildcard CORS).
                 if !is_host_allowed(header_str(headers, header::HOST), allowed_hosts) {
-                    return Err((StatusCode::FORBIDDEN, "Forbidden: Host not allowed").into_response());
+                    return Err(Box::new((StatusCode::FORBIDDEN, "Forbidden: Host not allowed").into_response()));
                 }
                 if !is_origin_allowed(header_str(headers, header::ORIGIN), allowed_hosts) {
-                    return Err((StatusCode::FORBIDDEN, "Forbidden: cross-origin request rejected").into_response());
+                    return Err(Box::new(
+                        (StatusCode::FORBIDDEN, "Forbidden: cross-origin request rejected").into_response(),
+                    ));
                 }
                 Ok(())
             }

@@ -26,7 +26,7 @@ fn json_response(status: StatusCode, body: &Value) -> Response {
 
 async fn handle_mcp(State(app): State<Arc<AppState>>, headers: HeaderMap, body: Bytes) -> Response {
     if let Err(refusal) = app.auth.check(&headers) {
-        return refusal;
+        return *refusal;
     }
     let message: Value = match serde_json::from_slice(&body) {
         Ok(message) => message,
@@ -61,7 +61,7 @@ async fn handle_mcp(State(app): State<Arc<AppState>>, headers: HeaderMap, body: 
 /// Stateless mode keeps no sessions and opens no server-to-client stream.
 async fn method_not_allowed(State(app): State<Arc<AppState>>, headers: HeaderMap) -> Response {
     if let Err(refusal) = app.auth.check(&headers) {
-        return refusal;
+        return *refusal;
     }
     let error = json!({
         "jsonrpc": "2.0",

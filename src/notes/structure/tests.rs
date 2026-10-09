@@ -8,19 +8,9 @@ fn path(parts: &[&str]) -> Vec<String> {
 fn outlines_nested_headings_with_line_ranges() {
     let content = "# A\ntext\n## B\nmore\n# C\nend\n";
     let outline = note_structure(content);
-    let summary: Vec<_> = outline
-        .headings
-        .iter()
-        .map(|h| (h.heading.clone(), h.level, h.start_line, h.end_line))
-        .collect();
-    assert_eq!(
-        summary,
-        vec![
-            (path(&["A"]), 1, 1, 4),
-            (path(&["A", "B"]), 2, 3, 4),
-            (path(&["C"]), 1, 5, 6),
-        ]
-    );
+    let summary: Vec<_> =
+        outline.headings.iter().map(|h| (h.heading.clone(), h.level, h.start_line, h.end_line)).collect();
+    assert_eq!(summary, vec![(path(&["A"]), 1, 1, 4), (path(&["A", "B"]), 2, 3, 4), (path(&["C"]), 1, 5, 6),]);
 }
 
 #[test]
@@ -60,10 +50,7 @@ fn selects_sections_and_blocks() {
     assert_eq!(select_note_range(content, None, None).unwrap(), 0..content.len());
     assert_eq!(select_note_range(content, Some(&path(&["Z"])), None), Err(TargetError::NotFound));
     assert_eq!(select_note_range(content, Some(&path(&["A"])), Some("g")), Err(TargetError::Both));
-    assert_eq!(
-        select_note_range("# A\n# A\n", Some(&path(&["A"])), None),
-        Err(TargetError::Ambiguous)
-    );
+    assert_eq!(select_note_range("# A\n# A\n", Some(&path(&["A"])), None), Err(TargetError::Ambiguous));
 }
 
 #[test]
@@ -72,11 +59,7 @@ fn reads_tasks() {
     let tasks: Vec<_> = note_tasks(content).into_iter().map(|t| (t.line, t.text, t.completed)).collect();
     assert_eq!(
         tasks,
-        vec![
-            (1, "open".to_string(), false),
-            (2, "done".to_string(), true),
-            (3, "nested".to_string(), true),
-        ]
+        vec![(1, "open".to_string(), false), (2, "done".to_string(), true), (3, "nested".to_string(), true),]
     );
     let long = format!("- [ ] {}", "x".repeat(600));
     let task = &note_tasks(&long)[0];

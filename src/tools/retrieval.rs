@@ -10,7 +10,9 @@ use serde_json::json;
 use super::ToolContext;
 use super::params::{GetNoteOutlineParams, ListTasksParams, ReadNotesParams, SearchNotesParams, TaskStatus};
 use crate::mcp::ToolError;
-use crate::notes::{LineMatch, ScanOptions, make_deep_link, note_structure, note_tasks, scan_notes, validate_note_path};
+use crate::notes::{
+    LineMatch, ScanOptions, make_deep_link, note_structure, note_tasks, scan_notes, validate_note_path,
+};
 use crate::util::char_len;
 
 /// A note without a checkbox marker has no tasks; skip the Markdown parse.
@@ -154,11 +156,8 @@ struct ReadResult {
 }
 
 fn serialize_batch(notes: &[ReadResult], omitted: &[String]) -> String {
-    let missing: Vec<&str> = notes
-        .iter()
-        .filter(|n| matches!(n.status, ReadStatus::NotFound))
-        .map(|n| n.path.as_str())
-        .collect();
+    let missing: Vec<&str> =
+        notes.iter().filter(|n| matches!(n.status, ReadStatus::NotFound)).map(|n| n.path.as_str()).collect();
     json!({ "notes": notes, "missing_paths": missing, "omitted_paths": omitted }).to_string()
 }
 
@@ -174,7 +173,8 @@ pub async fn read_notes(ctx: Arc<ToolContext>, args: ReadNotesParams) -> Result<
     }
     let mut notes: Vec<ReadResult> = Vec::new();
     for (i, path) in paths.iter().enumerate() {
-        let mut note = ReadResult { path: path.clone(), status: ReadStatus::Ok, url: None, content: None, omitted_chars: None };
+        let mut note =
+            ReadResult { path: path.clone(), status: ReadStatus::Ok, url: None, content: None, omitted_chars: None };
         match validate_note_path(path) {
             Err(_) => note.status = ReadStatus::Error,
             Ok(()) => {

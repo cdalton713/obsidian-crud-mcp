@@ -236,7 +236,8 @@ impl SearchIndex {
             None => data,
         };
         let file_name = persist_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let tmp = persist_path.with_file_name(format!(".{file_name}.{}.{}.tmp", std::process::id(), uuid::Uuid::new_v4()));
+        let tmp =
+            persist_path.with_file_name(format!(".{file_name}.{}.{}.tmp", std::process::id(), uuid::Uuid::new_v4()));
         match write_private(persist_path, &tmp, data.as_bytes()).await {
             Ok(()) => info!(
                 "Search index saved to disk ({count} notes{}).",
@@ -292,9 +293,8 @@ impl SearchIndex {
 
     /// Indexed paths with mtimes sorted by name, optionally inside `folder`.
     pub fn list_with_mtime(&self, folder: Option<&str>) -> Vec<NoteListing> {
-        let prefix = folder
-            .filter(|f| !f.is_empty())
-            .map(|f| if f.ends_with('/') { f.to_owned() } else { format!("{f}/") });
+        let prefix =
+            folder.filter(|f| !f.is_empty()).map(|f| if f.ends_with('/') { f.to_owned() } else { format!("{f}/") });
         let inner = self.inner.read();
         let mut entries: Vec<NoteListing> = inner
             .known_paths
@@ -416,9 +416,8 @@ fn decrypt(data: &str, passphrase: &str) -> Option<String> {
     }
     let key = derive_key(passphrase, &salt)?;
     ciphertext.extend_from_slice(&tag);
-    let plain = Aes256Gcm::new(&key.into())
-        .decrypt(Nonce::from_slice(&iv), Payload { msg: &ciphertext, aad: &[] })
-        .ok()?;
+    let plain =
+        Aes256Gcm::new(&key.into()).decrypt(Nonce::from_slice(&iv), Payload { msg: &ciphertext, aad: &[] }).ok()?;
     String::from_utf8(plain).ok()
 }
 

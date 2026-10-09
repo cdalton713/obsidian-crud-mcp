@@ -76,10 +76,7 @@ fn removal_deletes_selected_keys_and_preserves_others() {
         "---\nstatus: draft\n---\nBody"
     );
     // Untouched lines keep their exact text, spacing included.
-    assert_eq!(
-        update("---\na:  1\nlast: 2 # z\n---\nBody", json!({}), &["last"]).unwrap(),
-        "---\na:  1\n---\nBody"
-    );
+    assert_eq!(update("---\na:  1\nlast: 2 # z\n---\nBody", json!({}), &["last"]).unwrap(), "---\na:  1\n---\nBody");
     assert_eq!(update("---\nonly: x\n---\nBody", json!({}), &["only"]).unwrap(), "Body");
 }
 
@@ -136,10 +133,7 @@ fn updates_create_frontmatter_when_missing() {
         update("# Body\n", json!({"status": "done", "tags": ["a"]}), &[]).unwrap(),
         "---\nstatus: done\ntags:\n  - a\n---\n# Body\n"
     );
-    assert_eq!(
-        update("---\n---\nBody", json!({"status": "done"}), &[]).unwrap(),
-        "---\nstatus: done\n---\nBody"
-    );
+    assert_eq!(update("---\n---\nBody", json!({"status": "done"}), &[]).unwrap(), "---\nstatus: done\n---\nBody");
 }
 
 #[test]
@@ -180,7 +174,10 @@ fn strings_that_need_quotes_are_quoted() {
 
 #[test]
 fn reads_properties_leniently() {
-    assert_eq!(Value::Object(read_properties("---\ntitle: T\ntags: [a]\n---\nx")), json!({"title": "T", "tags": ["a"]}));
+    assert_eq!(
+        Value::Object(read_properties("---\ntitle: T\ntags: [a]\n---\nx")),
+        json!({"title": "T", "tags": ["a"]})
+    );
     assert!(read_properties("---\n: [bad\n---\n").is_empty());
     assert!(read_properties("no frontmatter").is_empty());
     assert!(read_properties("---\n# only a comment\n---\n").is_empty());

@@ -11,7 +11,10 @@ use crate::notes::{make_deep_link, update_properties};
 use crate::util::now_ms;
 use crate::vault::is_path_writable;
 
-pub async fn update_note_properties(ctx: Arc<ToolContext>, args: UpdateNotePropertiesParams) -> Result<String, ToolError> {
+pub async fn update_note_properties(
+    ctx: Arc<ToolContext>,
+    args: UpdateNotePropertiesParams,
+) -> Result<String, ToolError> {
     let UpdateNotePropertiesParams { path, set, remove } = args;
     if !is_path_writable(&path, ctx.write_folders.as_deref()) {
         return Ok(json!({ "error": "Write access denied: path is outside the writable folders." }).to_string());

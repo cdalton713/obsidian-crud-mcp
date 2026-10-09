@@ -137,9 +137,7 @@ async fn candidates(
         .list_notes(None)
         .await?
         .into_iter()
-        .filter(|path| {
-            is_valid_note_path(path) && folder.is_none_or(|f| path.starts_with(&format!("{f}/")))
-        })
+        .filter(|path| is_valid_note_path(path) && folder.is_none_or(|f| path.starts_with(&format!("{f}/"))))
         .collect();
     paths.sort();
     paths.dedup();
@@ -165,16 +163,15 @@ pub async fn scan_notes(
 ) -> Result<String, VaultError> {
     let folder = options.folder.as_deref().map(trim_slashes).filter(|f| !f.is_empty());
     let tag = options.tag.as_deref().map(|t| t.strip_prefix('#').unwrap_or(t));
-    let key = hex::encode(Sha256::digest(
-        json!([filter_key, folder.unwrap_or(""), tag.unwrap_or("")]).to_string(),
-    ));
+    let key = hex::encode(Sha256::digest(json!([filter_key, folder.unwrap_or(""), tag.unwrap_or("")]).to_string()));
     let cursor = match options.cursor.as_deref() {
         None => None,
         Some(raw) => match decode_cursor(raw, &key) {
             Some(cursor) => Some(cursor),
             None => {
-                return Ok(json!({ "error": "Invalid cursor or changed filters. Start again without cursor." })
-                    .to_string());
+                return Ok(
+                    json!({ "error": "Invalid cursor or changed filters. Start again without cursor." }).to_string()
+                );
             }
         },
     };
@@ -236,10 +233,8 @@ pub async fn scan_notes(
             continue;
         };
         if length > SCAN_NOTE_MAX_CHARS {
-            skipped.push(Skipped {
-                path: path.clone(),
-                reason: format!("exceeds_{SCAN_NOTE_MAX_CHARS}_char_scan_limit"),
-            });
+            skipped
+                .push(Skipped { path: path.clone(), reason: format!("exceeds_{SCAN_NOTE_MAX_CHARS}_char_scan_limit") });
             i += 1;
             continue;
         }
@@ -251,8 +246,7 @@ pub async fn scan_notes(
                 continue;
             }
         }
-        let matches: Vec<LineMatch> =
-            find_matches(&content).into_iter().filter(|m| m.line >= from_line).collect();
+        let matches: Vec<LineMatch> = find_matches(&content).into_iter().filter(|m| m.line >= from_line).collect();
         let count = matches.len();
         for (j, found) in matches.into_iter().enumerate() {
             let line = found.line;
@@ -296,8 +290,6 @@ async fn read_for_scan(vault: &dyn VaultBackend, index: Option<&SearchIndex>, pa
 fn decode_cursor(raw: &str, key: &str) -> Option<Cursor> {
     let bytes = CURSOR_DECODER.decode(raw).ok()?;
     let cursor: Cursor = serde_json::from_slice(&bytes).ok()?;
-    let valid = cursor.key == key
-        && is_valid_note_path(&cursor.path)
-        && (1..=1_000_001).contains(&cursor.line);
+    let valid = cursor.key == key && is_valid_note_path(&cursor.path) && (1..=1_000_001).contains(&cursor.line);
     valid.then_some(cursor)
 }

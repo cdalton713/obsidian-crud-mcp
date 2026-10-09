@@ -114,11 +114,7 @@ impl LocalVault {
 
     fn to_vault_path(&self, full: &Path) -> String {
         let relative = full.strip_prefix(&self.root).unwrap_or(full);
-        relative
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/")
+        relative.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")
     }
 
     /// Write folders as they are spelled on disk, so they compare against
@@ -143,8 +139,7 @@ impl LocalVault {
         let full = self.safe_path(path, true).await?;
         let resolved = self.to_vault_path(&full);
         let canonical = self.canonical_write_folders().await;
-        if !is_path_writable(path, self.write_folders.as_deref())
-            || !is_path_writable(&resolved, canonical.as_deref())
+        if !is_path_writable(path, self.write_folders.as_deref()) || !is_path_writable(&resolved, canonical.as_deref())
         {
             return Err(VaultError::WriteDenied(path.to_owned()));
         }
@@ -247,9 +242,9 @@ impl VaultBackend for LocalVault {
     }
 
     async fn list_notes_with_mtime(&self, folder: Option<&str>) -> Result<Vec<NoteListing>, VaultError> {
-        let folder = folder.filter(|f| !f.is_empty()).map(|f| {
-            if f.ends_with('/') || f.ends_with('\\') { f.to_owned() } else { format!("{f}/") }
-        });
+        let folder = folder
+            .filter(|f| !f.is_empty())
+            .map(|f| if f.ends_with('/') || f.ends_with('\\') { f.to_owned() } else { format!("{f}/") });
         let search_dir = match &folder {
             Some(folder) => self.safe_path(folder, false).await?,
             None => self.root.clone(),

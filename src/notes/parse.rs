@@ -11,10 +11,8 @@ use super::properties::{Frontmatter, read_properties, split_frontmatter};
 static INLINE_TAG: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|\s)#([\p{L}\p{N}_/-][\p{L}\p{M}\p{N}_/-]*)").unwrap());
 static ALL_DIGITS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\p{Nd}+$").unwrap());
-static WIKILINK: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").unwrap());
-static MARKDOWN_LINK: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[([^\]]+)\]\(([^)]+\.md)\)").unwrap());
+static WIKILINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").unwrap());
+static MARKDOWN_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([^\]]+)\]\(([^)]+\.md)\)").unwrap());
 static FENCE_OPEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^ {0,3}(`{3,}|~{3,})").unwrap());
 
 /// What a note says about itself: properties, tags and outgoing links.

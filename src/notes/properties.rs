@@ -47,14 +47,7 @@ pub struct FrontmatterParts<'a> {
 /// one is a Markdown horizontal rule, not frontmatter.
 pub fn split_frontmatter(content: &str) -> FrontmatterParts<'_> {
     let eol = if content.contains("\r\n") { "\r\n" } else { "\n" };
-    let none = FrontmatterParts {
-        yaml: None,
-        body: content,
-        body_offset: 0,
-        opening: "",
-        closing: "",
-        eol,
-    };
+    let none = FrontmatterParts { yaml: None, body: content, body_offset: 0, opening: "", closing: "", eol };
     let Some(opening) = OPENING.find(content) else {
         return none;
     };
@@ -75,10 +68,7 @@ pub fn split_frontmatter(content: &str) -> FrontmatterParts<'_> {
 
 /// The note's properties, or an empty map when it has none or they are malformed.
 pub fn read_properties(content: &str) -> Frontmatter {
-    split_frontmatter(content)
-        .yaml
-        .and_then(|yaml| parse_mapping(yaml).ok())
-        .unwrap_or_default()
+    split_frontmatter(content).yaml.and_then(|yaml| parse_mapping(yaml).ok()).unwrap_or_default()
 }
 
 /// Parse frontmatter YAML into a map of top-level keys.
@@ -90,8 +80,7 @@ fn parse_mapping(source: &str) -> Result<Frontmatter, PropertyError> {
     }) {
         return Ok(Frontmatter::new());
     }
-    let value: serde_norway::Value =
-        serde_norway::from_str(&source).map_err(|_| PropertyError::InvalidYaml)?;
+    let value: serde_norway::Value = serde_norway::from_str(&source).map_err(|_| PropertyError::InvalidYaml)?;
     match yaml_to_json(value) {
         Value::Object(map) => Ok(map),
         Value::Null => Ok(Frontmatter::new()),
@@ -110,18 +99,12 @@ fn yaml_to_json(value: serde_norway::Value) -> Value {
             } else if let Some(u) = n.as_u64() {
                 Value::from(u)
             } else {
-                n.as_f64()
-                    .and_then(serde_json::Number::from_f64)
-                    .map_or(Value::Null, Value::Number)
+                n.as_f64().and_then(serde_json::Number::from_f64).map_or(Value::Null, Value::Number)
             }
         }
         Yaml::String(s) => Value::String(s),
         Yaml::Sequence(items) => Value::Array(items.into_iter().map(yaml_to_json).collect()),
-        Yaml::Mapping(map) => Value::Object(
-            map.into_iter()
-                .map(|(k, v)| (key_string(k), yaml_to_json(v)))
-                .collect(),
-        ),
+        Yaml::Mapping(map) => Value::Object(map.into_iter().map(|(k, v)| (key_string(k), yaml_to_json(v))).collect()),
         Yaml::Tagged(tagged) => yaml_to_json(tagged.value),
     }
 }
@@ -142,13 +125,9 @@ pub(crate) fn json_eq(a: &Value, b: &Value) -> bool {
             (Some(x), Some(y)) => x == y,
             _ => x.as_f64() == y.as_f64(),
         },
-        (Value::Array(x), Value::Array(y)) => {
-            x.len() == y.len() && x.iter().zip(y).all(|(a, b)| json_eq(a, b))
-        }
+        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(a, b)| json_eq(a, b)),
         (Value::Object(x), Value::Object(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .all(|(k, v)| y.get(k).is_some_and(|other| json_eq(v, other)))
+            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|other| json_eq(v, other)))
         }
         _ => a == b,
     }
@@ -161,11 +140,7 @@ pub(crate) fn json_eq(a: &Value, b: &Value) -> bool {
 /// comments directly above them. If the frontmatter is too unusual to edit line
 /// by line (anchors shared with changed keys, flow-style roots, complex keys),
 /// it is serialized again from its values instead. The body is never changed.
-pub fn update_properties(
-    content: &str,
-    set: &Frontmatter,
-    remove: &[String],
-) -> Result<String, PropertyError> {
+pub fn update_properties(content: &str, set: &Frontmatter, remove: &[String]) -> Result<String, PropertyError> {
     if remove.iter().any(|key| set.contains_key(key)) {
         return Err(PropertyError::SetAndRemove);
     }
@@ -177,9 +152,7 @@ pub fn update_properties(
         return Ok(content.to_owned());
     }
     let before = parse_mapping(parts.yaml.unwrap_or(""))?;
-    let unchanged = set
-        .iter()
-        .all(|(key, value)| before.get(key).is_some_and(|old| json_eq(old, value)))
+    let unchanged = set.iter().all(|(key, value)| before.get(key).is_some_and(|old| json_eq(old, value)))
         && remove.iter().all(|key| !before.contains_key(key));
     if unchanged {
         return Ok(content.to_owned());
@@ -205,10 +178,7 @@ pub fn update_properties(
         .filter(|edited| {
             parse_mapping(edited).is_ok_and(|parsed| {
                 parsed.len() == expected.len()
-                    && parsed
-                        .iter()
-                        .zip(&expected)
-                        .all(|((k1, v1), (k2, v2))| k1 == k2 && json_eq(v1, v2))
+                    && parsed.iter().zip(&expected).all(|((k1, v1), (k2, v2))| k1 == k2 && json_eq(v1, v2))
             })
         })
         .unwrap_or_else(|| serialize_mapping(&expected));
@@ -285,11 +255,7 @@ fn edit_in_place(yaml: &str, set: &Frontmatter, remove: &[String]) -> Option<Str
             LineKind::Continuation => return None,
             LineKind::Key => {
                 // Comments directly above the key, and blank lines directly above those, belong to it.
-                let comments = pending
-                    .iter()
-                    .rev()
-                    .take_while(|l| classify(l) == LineKind::Comment)
-                    .count();
+                let comments = pending.iter().rev().take_while(|l| classify(l) == LineKind::Comment).count();
                 let blanks = pending[..pending.len() - comments]
                     .iter()
                     .rev()
@@ -345,10 +311,7 @@ fn edit_in_place(yaml: &str, set: &Frontmatter, remove: &[String]) -> Option<Str
         .map(|(key, value)| serialize_entry(key, value))
         .collect();
     if !additions.is_empty() {
-        let at = out
-            .iter()
-            .rposition(|s| matches!(s, Segment::Entry(_)))
-            .map_or(out.len(), |p| p + 1);
+        let at = out.iter().rposition(|s| matches!(s, Segment::Entry(_))).map_or(out.len(), |p| p + 1);
         out.insert(at, Segment::Free(vec![additions]));
     }
 
@@ -360,10 +323,9 @@ fn edit_in_place(yaml: &str, set: &Frontmatter, remove: &[String]) -> Option<Str
                 entry.leading.iter().chain(&entry.body).for_each(|l| text.push_str(l));
             }
             // With no keys left, keep surviving comments but drop the frontmatter if there are none.
-            Segment::Free(free) if !has_keys => free
-                .iter()
-                .filter(|l| classify(l) == LineKind::Comment)
-                .for_each(|l| text.push_str(l)),
+            Segment::Free(free) if !has_keys => {
+                free.iter().filter(|l| classify(l) == LineKind::Comment).for_each(|l| text.push_str(l))
+            }
             Segment::Free(free) => free.iter().for_each(|l| text.push_str(l)),
         }
     }
@@ -434,9 +396,7 @@ fn yaml_scalar(value: &Value) -> String {
             Some(f) if n.is_f64() && f.fract() == 0.0 && f.abs() < 1e15 => format!("{}", f as i64),
             _ => n.to_string(),
         },
-        Value::String(s) if plain_reads_back(&format!("k: {s}\n"), |v| v.as_str() == Some(s)) => {
-            s.clone()
-        }
+        Value::String(s) if plain_reads_back(&format!("k: {s}\n"), |v| v.as_str() == Some(s)) => s.clone(),
         Value::String(s) => serde_json::to_string(s).unwrap_or_default(),
         Value::Array(_) => "[]".to_owned(),
         Value::Object(_) => "{}".to_owned(),
@@ -445,13 +405,8 @@ fn yaml_scalar(value: &Value) -> String {
 
 fn yaml_key(key: &str) -> String {
     let plain = format!("{key}: 0\n");
-    let reads_back = !key.is_empty()
-        && parse_mapping(&plain).is_ok_and(|map| map.len() == 1 && map.contains_key(key));
-    if reads_back {
-        key.to_owned()
-    } else {
-        serde_json::to_string(key).unwrap_or_default()
-    }
+    let reads_back = !key.is_empty() && parse_mapping(&plain).is_ok_and(|map| map.len() == 1 && map.contains_key(key));
+    if reads_back { key.to_owned() } else { serde_json::to_string(key).unwrap_or_default() }
 }
 
 fn plain_reads_back(probe: &str, check: impl Fn(&Value) -> bool) -> bool {

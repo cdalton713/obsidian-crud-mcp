@@ -155,11 +155,10 @@ impl AwsStore {
 
     pub async fn new(options: &S3Options) -> Self {
         use aws_sdk_s3::config::{
-            BehaviorVersion, Credentials, Region, RequestChecksumCalculation,
-            ResponseChecksumValidation, timeout::TimeoutConfig,
+            BehaviorVersion, Credentials, Region, RequestChecksumCalculation, ResponseChecksumValidation,
+            timeout::TimeoutConfig,
         };
-        let mut loader = aws_config::defaults(BehaviorVersion::latest())
-            .region(Region::new(options.region.clone()));
+        let mut loader = aws_config::defaults(BehaviorVersion::latest()).region(Region::new(options.region.clone()));
         if let (Some(id), Some(secret)) = (&options.access_key_id, &options.secret_access_key) {
             loader = loader.credentials_provider(Credentials::new(id, secret, None, None, "environment"));
         }
@@ -223,14 +222,7 @@ impl ObjectStore for AwsStore {
     }
 
     async fn get(&self, key: &str) -> Result<ObjectData, StoreError> {
-        let object = self
-            .client
-            .get_object()
-            .bucket(&self.bucket)
-            .key(key)
-            .send()
-            .await
-            .map_err(request_error)?;
+        let object = self.client.get_object().bucket(&self.bucket).key(key).send().await.map_err(request_error)?;
         let etag = object.e_tag().map(str::to_owned);
         let metadata = object.metadata().cloned().unwrap_or_default();
         let body = object
@@ -286,13 +278,7 @@ impl ObjectStore for AwsStore {
     }
 
     async fn delete(&self, key: &str) -> Result<(), StoreError> {
-        self.client
-            .delete_object()
-            .bucket(&self.bucket)
-            .key(key)
-            .send()
-            .await
-            .map_err(request_error)?;
+        self.client.delete_object().bucket(&self.bucket).key(key).send().await.map_err(request_error)?;
         Ok(())
     }
 }
@@ -347,19 +333,11 @@ pub fn plan_mirror(remote: &[RemoteNote], manifest: &Manifest, local_exists: imp
     let download = remote
         .iter()
         .filter(|note| {
-            manifest
-                .files
-                .get(&note.path)
-                .is_none_or(|known| known.etag != note.etag || !local_exists(&note.path))
+            manifest.files.get(&note.path).is_none_or(|known| known.etag != note.etag || !local_exists(&note.path))
         })
         .cloned()
         .collect();
-    let mut remove: Vec<String> = manifest
-        .files
-        .keys()
-        .filter(|path| !seen.contains(path.as_str()))
-        .cloned()
-        .collect();
+    let mut remove: Vec<String> = manifest.files.keys().filter(|path| !seen.contains(path.as_str())).cloned().collect();
     remove.sort();
     MirrorPlan { download, remove }
 }
@@ -386,7 +364,12 @@ pub struct S3Mirror {
 }
 
 impl S3Mirror {
-    pub fn new(root: impl Into<PathBuf>, manifest_path: impl Into<PathBuf>, prefix: &str, store: Arc<dyn ObjectStore>) -> Self {
+    pub fn new(
+        root: impl Into<PathBuf>,
+        manifest_path: impl Into<PathBuf>,
+        prefix: &str,
+        store: Arc<dyn ObjectStore>,
+    ) -> Self {
         Self {
             root: root.into(),
             manifest_path: manifest_path.into(),

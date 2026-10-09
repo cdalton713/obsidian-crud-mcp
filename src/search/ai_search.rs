@@ -139,10 +139,7 @@ impl AiSearchClient {
             };
             return Err(AiSearchError(format!("AI Search {path} failed ({}): {hint}", status.as_u16())));
         }
-        response
-            .json()
-            .await
-            .map_err(|_| AiSearchError("AI Search returned an unexpected response.".to_owned()))
+        response.json().await.map_err(|_| AiSearchError("AI Search returned an unexpected response.".to_owned()))
     }
 
     /// Vault path for an object key, or `None` when the key is not a note of this vault.

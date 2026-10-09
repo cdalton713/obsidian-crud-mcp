@@ -20,8 +20,8 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use super::{
-    LocalVault, NoteInfo, NoteListing, ObjectStore, Precondition, S3Mirror, Subscription,
-    VaultBackend, VaultChangeListener, VaultError, is_path_writable,
+    LocalVault, NoteInfo, NoteListing, ObjectStore, Precondition, S3Mirror, Subscription, VaultBackend,
+    VaultChangeListener, VaultError, is_path_writable,
 };
 use crate::notes::validate_note_path;
 

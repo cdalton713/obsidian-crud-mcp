@@ -106,7 +106,12 @@ async fn run() -> Result<(), String> {
 
     let oauth = match &config.auth_token {
         Some(token) => {
-            let oauth = OAuthProvider::new(&config.base_url, token, Some(config.data_dir.join("auth-tokens.json")), config.refresh_days);
+            let oauth = OAuthProvider::new(
+                &config.base_url,
+                token,
+                Some(config.data_dir.join("auth-tokens.json")),
+                config.refresh_days,
+            );
             oauth.load_tokens().await;
             Some(oauth)
         }

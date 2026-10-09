@@ -18,9 +18,9 @@ use crate::notes::{InvalidNotePath, NoteMetadata};
 
 pub use local::LocalVault;
 pub use mirror::{
-    AwsStore, Manifest, ManifestEntry, MirrorPlan, ObjectData, ObjectStore, ObjectSummary,
-    Precondition, RemoteNote, S3Mirror, S3Options, StoreError, is_mirrored_path, normalize_prefix,
-    parse_remote_mtime, plan_mirror, remote_metadata,
+    AwsStore, Manifest, ManifestEntry, MirrorPlan, ObjectData, ObjectStore, ObjectSummary, Precondition, RemoteNote,
+    S3Mirror, S3Options, StoreError, is_mirrored_path, normalize_prefix, parse_remote_mtime, plan_mirror,
+    remote_metadata,
 };
 pub use read_only::{READ_ONLY_MESSAGE, ReadOnlyVault};
 pub use s3::{S3Vault, S3VaultOptions};
@@ -109,10 +109,12 @@ pub trait VaultBackend: Send + Sync {
     }
 }
 
+type ListenerList = Mutex<Vec<(u64, Arc<dyn VaultChangeListener>)>>;
+
 /// A set of change listeners that a backend notifies.
 #[derive(Default)]
 pub struct Listeners {
-    inner: Arc<Mutex<Vec<(u64, Arc<dyn VaultChangeListener>)>>>,
+    inner: Arc<ListenerList>,
     next_id: Mutex<u64>,
 }
 
@@ -142,7 +144,7 @@ impl Listeners {
 #[must_use = "dropping a Subscription unsubscribes the listener"]
 pub struct Subscription {
     id: u64,
-    listeners: Weak<Mutex<Vec<(u64, Arc<dyn VaultChangeListener>)>>>,
+    listeners: Weak<ListenerList>,
 }
 
 impl Drop for Subscription {

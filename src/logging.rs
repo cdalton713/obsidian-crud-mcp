@@ -12,8 +12,7 @@ use regex::Regex;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::MakeWriter;
 
-static URL_USERINFO: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/?#]+@").unwrap());
+static URL_USERINFO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/?#]+@").unwrap());
 
 /// Replace the userinfo part of every URL in `text` (`http://u:p@h` becomes `http://***@h`).
 ///
@@ -101,10 +100,7 @@ mod tests {
         assert_eq!(redact_credentials("S3://KEY:SECRET@bucket"), "S3://***@bucket");
         assert_eq!(redact_credentials("no url here, just a@b"), "no url here, just a@b");
         assert_eq!(redact_credentials("http://host/path@x"), "http://host/path@x");
-        assert_eq!(
-            redact_credentials("two: http://a:b@x and ftp://c:d@y"),
-            "two: http://***@x and ftp://***@y"
-        );
+        assert_eq!(redact_credentials("two: http://a:b@x and ftp://c:d@y"), "two: http://***@x and ftp://***@y");
     }
 
     #[derive(Debug, thiserror::Error)]
