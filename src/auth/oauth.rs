@@ -834,4 +834,27 @@ async fn refresh_token_grant(
 }
 
 #[cfg(test)]
+impl OAuthProvider {
+    /// Move every recorded timestamp `ms` into the past, as if that much time
+    /// had passed, so expiry and lockout tests need not sleep.
+    fn advance_clock(&self, ms: i64) {
+        let mut guard = self.state.lock();
+        let state = &mut *guard;
+        for pending in state.pending.values_mut() {
+            pending.created_at -= ms;
+        }
+        for record in state.tokens.values_mut().chain(state.refresh_tokens.values_mut()) {
+            record.expires_at -= ms;
+            record.refresh_expires_at -= ms;
+        }
+        for client in state.clients.values_mut() {
+            client.created_at = client.created_at.map(|t| t - ms);
+        }
+        if state.locked_until > 0 {
+            state.locked_until -= ms;
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;
