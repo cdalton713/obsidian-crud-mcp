@@ -518,3 +518,5 @@ MIT — see [LICENSE](https://github.com/cdalton713/obsidian-crud-mcp/blob/main/
 - [markdown-rs](https://github.com/wooorm/markdown-rs) — CommonMark parsing for outlines, block IDs and tasks
 - [AWS SDK for Rust](https://github.com/awslabs/aws-sdk-rust) — S3 mode bucket access
 - [Fly.io](https://fly.io/) — deployment platform
+
+[![M8ven Score](https://m8ven.ai/badge/mcp/cdalton713-obsidian-crud-mcp-1m2wmp?v=2bf9f1c24e8aba4187c2faada280e637)](https://m8ven.ai/mcp/cdalton713-obsidian-crud-mcp-1m2wmp?s=readme)
