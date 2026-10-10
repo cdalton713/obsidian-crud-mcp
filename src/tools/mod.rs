@@ -12,6 +12,7 @@ use std::sync::{Arc, LazyLock};
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use regex::Regex;
+use rmcp::model::ToolAnnotations;
 use serde_json::{Value, json};
 use tracing::info;
 
@@ -75,14 +76,20 @@ pub const WRITE_TOOLS: [&str; 5] = ["write_note", "edit_note", "delete_note", "m
 /// context budget. Other clients ignore the key.
 pub const READ_NOTE_MAX_RESULT_SIZE_CHARS: usize = 100_000;
 
-fn tool<P, F, Fut>(ctx: &Arc<ToolContext>, name: &'static str, description: impl Into<String>, f: F) -> Tool
+fn tool<P, F, Fut>(
+    ctx: &Arc<ToolContext>,
+    name: &'static str,
+    description: impl Into<String>,
+    annotations: ToolAnnotations,
+    f: F,
+) -> Tool
 where
     P: ToolParams,
     F: Fn(Arc<ToolContext>, P) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<String, ToolError>> + Send + 'static,
 {
     let ctx = Arc::clone(ctx);
-    Tool::new(name, description, move |params| f(Arc::clone(&ctx), params))
+    Tool::new(name, description, move |params| f(Arc::clone(&ctx), params)).with_annotations(annotations)
 }
 
 /// Build the tool list for this configuration.
@@ -98,60 +105,71 @@ pub fn build_tools(ctx: ToolContext) -> Vec<Tool> {
         .unwrap_or_default();
     let read_only = ctx.read_only;
     let has_semantic = ctx.semantic.is_some();
+    let read_annotations = ToolAnnotations::new().read_only(true).destructive(false).idempotent(true).open_world(false);
+    // Writes can overwrite or remove existing content. Repeated writes and
+    // same-path moves update timestamps; edits can append duplicate content.
+    // With semantic search enabled, writes also request a Cloudflare indexing job.
+    let write_annotations =
+        ToolAnnotations::new().read_only(false).destructive(true).idempotent(false).open_world(has_semantic);
     let ctx = Arc::new(ctx);
     let mut tools = vec![
         tool(
             &ctx,
             "list_tasks",
             "List standard Markdown checkbox tasks with text, completion state, 1-based source lines, and Obsidian URLs. Defaults to incomplete tasks. Ignores frontmatter and code; plugin-specific statuses, recurrence, and due dates are not interpreted. Follow next_cursor until null; skipped notes are reported.",
+            read_annotations.clone(),
             retrieval::list_tasks,
         ),
         tool(
             &ctx,
             "get_note_outline",
             "Get document-level headings, full heading paths, and paragraph or standalone block IDs. Returns 1-based inclusive source line ranges; heading ranges include child sections. Ignores frontmatter and code. Use the returned heading paths or block IDs with read_note and edit_note.",
+            read_annotations.clone(),
             retrieval::get_note_outline,
         ),
         tool(
             &ctx,
             "search_notes",
             "Search note content for a literal, single-line phrase (not regex or Obsidian query syntax). Returns one excerpt per matching line, 1-based line numbers, and URLs. Reads current content from disk, the whole vault by default; follow next_cursor while it is not null. Reports skipped notes, including notes over 1 million characters.",
+            read_annotations.clone(),
             retrieval::search_notes,
         ),
         tool(
             &ctx,
             "read_notes",
             "Read up to 20 notes in requested order. Returns JSON with per-note status, Obsidian URLs, and missing_paths for notes that do not exist. max_chars caps the entire serialized response; truncated notes and omitted paths are explicit. Read omitted content with read_note.",
+            read_annotations.clone(),
             retrieval::read_notes,
         ),
     ];
     if has_semantic {
-        tools.push(tool(&ctx, "semantic_search", "Find notes by meaning, not exact wording: a ranked hybrid (embedding + keyword) search over the whole vault. Returns the best-matching passages with note path, score (0 to 1) and URL; several passages may come from one note. The index refreshes on a schedule and shortly after this server writes a note, so an edit made minutes ago may be missing; search_notes always reads current content. Use this first when you do not know the exact words.", semantic::semantic_search));
+        tools.push(tool(&ctx, "semantic_search", "Find notes by meaning, not exact wording: a ranked hybrid (embedding + keyword) search over the whole vault. Returns the best-matching passages with note path, score (0 to 1) and URL; several passages may come from one note. The index refreshes on a schedule and shortly after this server writes a note, so an edit made minutes ago may be missing; search_notes always reads current content. Use this first when you do not know the exact words.", read_annotations.clone().open_world(true), semantic::semantic_search));
     }
     if !read_only {
-        tools.push(tool(&ctx, "update_note_properties", "Set or remove top-level YAML properties in an existing note. Supports strings, numbers, booleans, null, and lists of these values. Untouched properties keep their exact text; set properties are rewritten, so their comments, quoting, and list style can change. The Markdown body stays byte-for-byte identical. Rejects malformed YAML and preserves unrelated property values. Obeys writable-folder restrictions.", properties::update_note_properties));
+        tools.push(tool(&ctx, "update_note_properties", "Set or remove top-level YAML properties in an existing note. Supports strings, numbers, booleans, null, and lists of these values. Untouched properties keep their exact text; set properties are rewritten, so their comments, quoting, and list style can change. The Markdown body stays byte-for-byte identical. Rejects malformed YAML and preserves unrelated property values. Obeys writable-folder restrictions.", write_annotations.clone().idempotent(true), properties::update_note_properties));
     }
     tools.push(
-        tool(&ctx, "read_note", "Read a note or a selected heading section/block from the Obsidian vault. Returns Markdown and an Obsidian link. Omit heading and block to read the whole note; missing or ambiguous targets are rejected.", read_note)
+        tool(&ctx, "read_note", "Read a note or a selected heading section/block from the Obsidian vault. Returns Markdown and an Obsidian link. Omit heading and block to read the whole note; missing or ambiguous targets are rejected.", read_annotations.clone(), read_note)
             .with_meta(json!({ "anthropic/maxResultSizeChars": READ_NOTE_MAX_RESULT_SIZE_CHARS })),
     );
     if !read_only {
-        tools.push(tool(&ctx, "write_note", format!("Write or update a note in the Obsidian vault. Creates the note if it doesn't exist. Replaces the entire content if it does — read first if you need to preserve existing content.{scope_note}"), write_note));
+        tools.push(tool(&ctx, "write_note", format!("Write or update a note in the Obsidian vault. Creates the note if it doesn't exist. Replaces the entire content if it does — read first if you need to preserve existing content.{scope_note}"), write_annotations.clone(), write_note));
     }
-    tools.push(tool(&ctx, "list_notes", "List markdown notes in the vault with modification timestamps. Examples: list_notes(sort_by='modified', limit=10) for 10 most recent notes. list_notes(name='meeting') to find notes by name. list_notes(folder='daily') for a specific folder. list_notes(tag='project') for notes with a specific tag. Returns up to 100 notes by default.", list_notes));
-    tools.push(tool(&ctx, "list_folders", "List all folders in the vault. Use this to discover folder names before writing or listing notes. Returns the folder tree with note counts.", list_folders));
-    tools.push(tool(&ctx, "list_tags", "List all tags used in the vault, sorted by frequency. Use this to discover tags before filtering with list_notes.", list_tags));
+    tools.push(tool(&ctx, "list_notes", "List markdown notes in the vault with modification timestamps. Examples: list_notes(sort_by='modified', limit=10) for 10 most recent notes. list_notes(name='meeting') to find notes by name. list_notes(folder='daily') for a specific folder. list_notes(tag='project') for notes with a specific tag. Returns up to 100 notes by default.", read_annotations.clone(), list_notes));
+    tools.push(tool(&ctx, "list_folders", "List all folders in the vault. Use this to discover folder names before writing or listing notes. Returns the folder tree with note counts.", read_annotations.clone(), list_folders));
+    tools.push(tool(&ctx, "list_tags", "List all tags used in the vault, sorted by frequency. Use this to discover tags before filtering with list_notes.", read_annotations.clone(), list_tags));
     if !read_only {
-        tools.push(tool(&ctx, "edit_note", format!("Edit a note or a selected heading section/block. Use 'append' (default), 'prepend' (after frontmatter for whole notes), or 'replace' to swap old_text with new content. For replace, old_text must match exactly once within the selected content. Heading lines and block IDs are preserved. Missing or ambiguous targets are rejected.{scope_note}"), edit_note));
+        tools.push(tool(&ctx, "edit_note", format!("Edit a note or a selected heading section/block. Use 'append' (default), 'prepend' (after frontmatter for whole notes), or 'replace' to swap old_text with new content. For replace, old_text must match exactly once within the selected content. Heading lines and block IDs are preserved. Missing or ambiguous targets are rejected.{scope_note}"), write_annotations.clone(), edit_note));
         tools.push(tool(
             &ctx,
             "delete_note",
             format!("Delete a note from the Obsidian vault.{scope_note}"),
+            write_annotations.clone().idempotent(true),
             delete_note,
         ));
-        tools.push(tool(&ctx, "move_note", format!("Move or rename a note. Use this to rename a note within the same folder, move it to a different folder, or both at once. Creates destination folders automatically.{scope_note}"), move_note));
+        tools.push(tool(&ctx, "move_note", format!("Move or rename a note. Use this to rename a note within the same folder, move it to a different folder, or both at once. Creates destination folders automatically.{scope_note}"), write_annotations, move_note));
     }
-    tools.push(tool(&ctx, "get_note_metadata", "Get metadata about a note without reading its full content. Returns frontmatter, tags, outgoing links, backlinks (notes that link to this one), size, and timestamps. Use this to navigate the knowledge graph.", get_note_metadata));
+    tools.push(tool(&ctx, "get_note_metadata", "Get metadata about a note without reading its full content. Returns frontmatter, tags, outgoing links, backlinks (notes that link to this one), size, and timestamps. Use this to navigate the knowledge graph.", read_annotations, get_note_metadata));
     tools
 }
 

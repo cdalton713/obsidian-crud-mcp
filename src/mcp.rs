@@ -7,7 +7,7 @@ use std::time::Instant;
 use futures::future::BoxFuture;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ErrorCode, Implementation, ListToolsResult,
-    PaginatedRequestParams, ServerCapabilities, ServerConfig,
+    PaginatedRequestParams, ServerCapabilities, ServerConfig, ToolAnnotations,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
@@ -48,6 +48,8 @@ pub struct Tool {
     pub name: &'static str,
     pub description: String,
     pub input_schema: Value,
+    /// Behavior hints advertised in `tools/list`.
+    pub annotations: Option<ToolAnnotations>,
     /// Extra `_meta` advertised in `tools/list`.
     pub meta: Option<Value>,
     validator: jsonschema::Validator,
@@ -84,6 +86,7 @@ impl Tool {
             name,
             description: description.into(),
             input_schema,
+            annotations: None,
             meta: None,
             validator,
             handler: Arc::new(move |args: Value| {
@@ -96,6 +99,11 @@ impl Tool {
                 })
             }),
         }
+    }
+
+    pub fn with_annotations(mut self, annotations: ToolAnnotations) -> Self {
+        self.annotations = Some(annotations);
+        self
     }
 
     pub fn with_meta(mut self, meta: Value) -> Self {
@@ -120,6 +128,7 @@ impl Tool {
             self.description.clone(),
             self.input_schema.as_object().expect("tool schemas are objects").clone(),
         );
+        tool.annotations = self.annotations.clone();
         if let Some(meta) = &self.meta {
             tool.meta = Some(meta.as_object().expect("tool metadata is an object").clone().into());
         }

@@ -15,7 +15,7 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::mcp::{McpServer, ServerInfo};
-use crate::search::IndexState;
+use crate::search::{AiSearchOptions, IndexState};
 use crate::vault::{LocalVault, NoteInfo, NoteListing, VaultError};
 
 /// A local vault that records which notes are read and can be told to fail some reads.
@@ -66,11 +66,17 @@ struct Options {
     read_only: bool,
     write_folders: Option<Vec<String>>,
     content_cache_chars: usize,
+    semantic: Option<Arc<AiSearchClient>>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { read_only: false, write_folders: None, content_cache_chars: SearchIndex::DEFAULT_MAX_CONTENT_CHARS }
+        Self {
+            read_only: false,
+            write_folders: None,
+            content_cache_chars: SearchIndex::DEFAULT_MAX_CONTENT_CHARS,
+            semantic: None,
+        }
     }
 }
 
@@ -106,7 +112,7 @@ async fn fixture_with(notes: &[(&str, &str)], options: Options) -> Fixture {
         vault_name: "Test Vault".to_owned(),
         read_only: options.read_only,
         write_folders: options.write_folders.clone(),
-        semantic: None,
+        semantic: options.semantic.clone(),
     };
     let info = ServerInfo { name: "test".to_owned(), version: "0".to_owned(), instructions: String::new() };
     let server = McpServer::new(info, build_tools(context()));
@@ -181,6 +187,65 @@ fn strings(value: &Value, field: &str) -> Vec<String> {
 
 fn headings(outline: &Value) -> Vec<Value> {
     outline["headings"].as_array().unwrap().iter().map(|h| h["heading"].clone()).collect()
+}
+
+#[tokio::test]
+async fn every_tool_declares_all_four_behavior_hints_over_mcp() {
+    for read_only in [false, true] {
+        for has_semantic in [false, true] {
+            let semantic = has_semantic.then(|| {
+                Arc::new(AiSearchClient::new(AiSearchOptions {
+                    account_id: "test".to_owned(),
+                    token: "test".to_owned(),
+                    namespace: "test".to_owned(),
+                    instance: "test".to_owned(),
+                    prefix: String::new(),
+                    api_base: Some("http://127.0.0.1:1".to_owned()),
+                }))
+            });
+            let f = fixture_with(&[], Options { read_only, semantic, ..Options::default() }).await;
+            let listing = serde_json::to_value(f.client.list_all_tools().await.unwrap()).unwrap();
+            let tools = listing.as_array().unwrap();
+            let expected = [
+                ("list_tasks", true, false, true, false),
+                ("get_note_outline", true, false, true, false),
+                ("search_notes", true, false, true, false),
+                ("read_notes", true, false, true, false),
+                ("read_note", true, false, true, false),
+                ("list_notes", true, false, true, false),
+                ("list_folders", true, false, true, false),
+                ("list_tags", true, false, true, false),
+                ("get_note_metadata", true, false, true, false),
+                ("semantic_search", true, false, true, true),
+                ("write_note", false, true, false, has_semantic),
+                ("edit_note", false, true, false, has_semantic),
+                ("delete_note", false, true, true, has_semantic),
+                ("move_note", false, true, false, has_semantic),
+                ("update_note_properties", false, true, true, has_semantic),
+            ];
+            let expected: Vec<_> = expected
+                .into_iter()
+                .filter(|(name, read, _, _, _)| (!read_only || *read) && (*name != "semantic_search" || has_semantic))
+                .collect();
+            assert_eq!(tools.len(), expected.len(), "read_only={read_only}, has_semantic={has_semantic}");
+            for (name, read, destructive, idempotent, open_world) in expected {
+                let tool = tools
+                    .iter()
+                    .find(|tool| tool["name"] == name)
+                    .unwrap_or_else(|| panic!("{name} is missing from tools/list"));
+                assert_eq!(
+                    tool["annotations"],
+                    json!({
+                        "readOnlyHint": read,
+                        "destructiveHint": destructive,
+                        "idempotentHint": idempotent,
+                        "openWorldHint": open_world,
+                    }),
+                    "{name}: read_only={read_only}, has_semantic={has_semantic}"
+                );
+            }
+        }
+    }
 }
 
 #[tokio::test]
